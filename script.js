@@ -232,10 +232,50 @@ const kits = [
   }
 ];
 
+const CATEGORY_FOLDERS = {
+  Masculino: '/masculino',
+  Feminino: '/feminino',
+  Calçados: '/sapatos',
+  Acessórios: '/acessorios',
+  Esportes: '/esportes'
+};
+
+const PRODUCT_DETAILS = {
+  1: { description: 'Tênis de corrida com amortecimento responsivo para treinos de alta intensidade.', sizes: '38, 39, 40, 41, 42, 43', gender: 'Masculino', folders: ['/masculino', '/sapatos', '/esportes'] },
+  2: { description: 'Legging de compressão com tecido elástico e secagem rápida para academia.', sizes: 'P, M, G, GG', gender: 'Feminino', folders: ['/feminino', '/esportes'] },
+  3: { description: 'Camisa dry fit para treinos com ventilação e conforto térmico.', sizes: 'P, M, G, GG', gender: 'Masculino', folders: ['/masculino', '/esportes'] },
+  4: { description: 'Chuteira para campo com tração aprimorada e estabilidade em mudanças rápidas.', sizes: '37, 38, 39, 40, 41, 42', gender: 'Masculino', folders: ['/masculino', '/sapatos', '/esportes'] },
+  5: { description: 'Garrafa térmica com vedação reforçada para manter a temperatura por mais tempo.', sizes: 'Único', gender: 'Unissex', folders: ['/acessorios', '/esportes'] },
+  6: { description: 'Top esportivo com sustentação média para corrida e academia.', sizes: 'P, M, G', gender: 'Feminino', folders: ['/feminino', '/esportes'] },
+  7: { description: 'Mochila com divisórias internas e tecido resistente para rotina esportiva.', sizes: 'Único', gender: 'Unissex', folders: ['/acessorios', '/esportes'] },
+  8: { description: 'Jaqueta leve com proteção contra vento e detalhes refletivos para corrida.', sizes: 'P, M, G, GG', gender: 'Masculino', folders: ['/masculino', '/esportes'] },
+  9: { description: 'Shorts com mobilidade e respirabilidade para treinos e corridas.', sizes: 'P, M, G, GG', gender: 'Masculino', folders: ['/masculino', '/esportes'] },
+  10: { description: 'Tênis feminino com retorno de energia e sola aderente para corrida urbana.', sizes: '34, 35, 36, 37, 38, 39', gender: 'Feminino', folders: ['/feminino', '/sapatos', '/esportes'] },
+  11: { description: 'Camiseta training com toque macio e modelagem confortável.', sizes: 'P, M, G', gender: 'Feminino', folders: ['/feminino', '/esportes'] },
+  12: { description: 'Meião esportivo de compressão com ajuste anatômico para futebol.', sizes: '39-43', gender: 'Unissex', folders: ['/acessorios', '/esportes'] },
+  13: { description: 'Luva com grip reforçado para maior segurança em treinos e partidas.', sizes: 'P, M, G', gender: 'Unissex', folders: ['/acessorios', '/esportes'] },
+  14: { description: 'Regata com tecido leve e tecnologia antiodor para academia.', sizes: 'P, M, G, GG', gender: 'Masculino', folders: ['/masculino', '/esportes'] },
+  15: { description: 'Bolsa esportiva com amplo espaço interno e alças reforçadas.', sizes: 'Único', gender: 'Unissex', folders: ['/acessorios', '/esportes'] },
+  16: { description: 'Calça com elasticidade e conforto para treino e uso diário.', sizes: 'P, M, G, GG', gender: 'Feminino', folders: ['/feminino', '/esportes'] }
+};
+
+const KIT_DETAILS = {
+  k1: { description: 'Kit focado em corrida para melhorar desempenho e recuperação.', sizes: 'Variável por item', gender: 'Unissex' },
+  k2: { description: 'Kit completo para academia com foco em praticidade e conforto.', sizes: 'Variável por item', gender: 'Unissex' },
+  k3: { description: 'Kit para futebol com produtos essenciais para treino e jogo.', sizes: 'Variável por item', gender: 'Unissex' },
+  k4: { description: 'Kit versátil para rotina de treino completo.', sizes: 'Variável por item', gender: 'Unissex' }
+};
+
+const productsWithDetails = products.map((product) => ({
+  ...product,
+  ...PRODUCT_DETAILS[product.id]
+}));
+
 let cart = [];
 let wishlist = [];
 let cashbackBalance = 0;
 let activeFilter = '';
+let activeFolder = '';
 let authMode = 'register';
 let currentUser = JSON.parse(localStorage.getItem('sportx-current-user') || 'null');
 let users = JSON.parse(localStorage.getItem('sportx-users') || '[]');
@@ -247,7 +287,18 @@ const currency = (value) =>
   });
 
 function getProduct(id) {
-  return products.find((product) => product.id === Number(id));
+  return productsWithDetails.find((product) => product.id === Number(id));
+}
+
+function getVisibleGender(gender) {
+  if (gender === 'Unissex') return 'Unissex';
+  return gender;
+}
+
+function updateActiveFolderLabel() {
+  const folderLabel = document.getElementById('activeFolderLabel');
+  if (!folderLabel) return;
+  folderLabel.textContent = activeFolder || '/produtos';
 }
 
 function showToast(message) {
@@ -451,12 +502,12 @@ function renderProductCard(product) {
       <div class="product-media">
         ${product.isNew ? '<span class="badge">NOVO</span>' : ''}
         <span class="cashback">Ganhe ${product.cashback}% de volta</span>
-        <img src="${product.image}" alt="${product.title}" />
+        <img src="${product.image}" alt="${product.title}" onclick="openProductDetails(${product.id})" />
         <button class="wish-btn ${wishlist.includes(product.id) ? 'active' : ''}" onclick="toggleWish(${product.id})">❤</button>
       </div>
       <div class="product-body">
         <div class="product-category">${product.category} • ${product.sport}</div>
-        <h3 class="product-title">${product.title}</h3>
+        <h3 class="product-title" onclick="openProductDetails(${product.id})">${product.title}</h3>
         <div class="product-meta">
           <div class="price-wrap">
             <strong>${currency(product.price)}</strong>
@@ -466,6 +517,7 @@ function renderProductCard(product) {
         </div>
         <div class="product-actions">
           <button class="btn-card btn-dark" onclick="addToCart(${product.id})">Adicionar</button>
+          <button class="btn-card btn-light" onclick="openProductDetails(${product.id})">Ver detalhes</button>
           <button class="btn-card btn-light" onclick="toggleWish(${product.id})">Favoritar</button>
         </div>
       </div>
@@ -480,17 +532,13 @@ function renderProducts() {
 
   const term = searchInput.value.trim().toLowerCase();
 
-  const filteredProducts = products.filter((product) => {
+  const filteredProducts = productsWithDetails.filter((product) => {
     const fields = [product.title, product.category, product.group, product.sport].join(' ').toLowerCase();
-    const categoryMatch =
-      !activeFilter ||
-      product.category === activeFilter ||
-      product.group === activeFilter ||
-      product.sport === activeFilter ||
-      activeFilter === 'Esportes';
+    const categoryMatch = !activeFilter || product.category === activeFilter || product.group === activeFilter || product.sport === activeFilter || activeFilter === 'Esportes';
+    const folderMatch = !activeFolder || product.folders?.includes(activeFolder);
 
     const textMatch = !term || fields.includes(term);
-    return categoryMatch && textMatch;
+    return categoryMatch && folderMatch && textMatch;
   });
 
   grid.innerHTML = filteredProducts.map(renderProductCard).join('');
@@ -509,7 +557,7 @@ function renderLaunches() {
   const launchCarousel = document.getElementById('launchCarousel');
   if (!launchCarousel) return;
 
-  const launches = products.filter((product) => product.isNew);
+  const launches = productsWithDetails.filter((product) => product.isNew);
   launchCarousel.innerHTML = launches.map(renderProductCard).join('');
 }
 
@@ -532,6 +580,7 @@ function renderKits() {
         </div>
         <div class="product-actions">
           <button class="btn-card btn-dark" onclick="addKitToCart('${kit.id}')">Adicionar kit</button>
+          <button class="btn-card btn-light" onclick="openKitDetails('${kit.id}')">Ver detalhes</button>
           <button class="btn-card btn-light" onclick="showToast('Personalização simulada para ${kit.title}.')">Personalizar</button>
         </div>
       </div>
@@ -715,6 +764,74 @@ function toggleAuthModal(force) {
   modal.classList.toggle('open', force ?? !modal.classList.contains('open'));
 }
 
+function toggleProductModal(force) {
+  const modal = document.getElementById('productModal');
+  if (!modal) return;
+  modal.classList.toggle('open', force ?? !modal.classList.contains('open'));
+}
+
+function renderProductModalContent(item) {
+  const content = document.getElementById('productModalContent');
+  if (!content || !item) return;
+
+  content.innerHTML = `
+    <img src="${item.image}" alt="${item.title}" />
+    <div>
+      <h3>${item.title}</h3>
+      <p>${item.description}</p>
+      <div class="product-modal-meta">
+        <span><strong>Preço:</strong> ${currency(item.price)}</span>
+        <span><strong>Numeração:</strong> ${item.sizes}</span>
+        <span><strong>Gênero:</strong> ${getVisibleGender(item.gender)}</span>
+      </div>
+      <button class="btn btn-primary top-gap-sm" onclick="addToCart(${item.id}); toggleProductModal(false);">Adicionar ao carrinho</button>
+    </div>
+  `;
+}
+
+function openProductDetails(id) {
+  const product = getProduct(id);
+  if (!product) return;
+  renderProductModalContent(product);
+  toggleProductModal(true);
+}
+
+function openKitDetails(kitId) {
+  const kit = kits.find((item) => item.id === kitId);
+  if (!kit) return;
+
+  const details = KIT_DETAILS[kit.id];
+  const content = document.getElementById('productModalContent');
+  if (!content || !details) return;
+
+  content.innerHTML = `
+    <img src="${kit.image}" alt="${kit.title}" />
+    <div>
+      <h3>${kit.title}</h3>
+      <p>${details.description}</p>
+      <div class="product-modal-meta">
+        <span><strong>Preço:</strong> ${currency(kit.price)}</span>
+        <span><strong>Numeração:</strong> ${details.sizes}</span>
+        <span><strong>Gênero:</strong> ${getVisibleGender(details.gender)}</span>
+      </div>
+      <button class="btn btn-primary top-gap-sm" onclick="addKitToCart('${kit.id}'); toggleProductModal(false);">Adicionar kit</button>
+    </div>
+  `;
+
+  toggleProductModal(true);
+}
+
+function updatePaymentInstallments() {
+  const paymentMethod = document.getElementById('paymentMethod');
+  const installmentsGroup = document.getElementById('installmentsGroup');
+  const installmentsSelect = document.getElementById('installmentsSelect');
+  if (!paymentMethod || !installmentsGroup || !installmentsSelect) return;
+
+  const isCredit = paymentMethod.value === 'credito';
+  installmentsGroup.style.display = isCredit ? 'block' : 'none';
+  installmentsSelect.disabled = !isCredit;
+}
+
 function updateAuthUI() {
   const isRegister = authMode === 'register';
 
@@ -809,8 +926,10 @@ function registerCategoryCards() {
   document.querySelectorAll('.category-card[data-filter]').forEach((card) => {
     card.addEventListener('click', () => {
       activeFilter = card.dataset.filter;
+      activeFolder = card.dataset.folder || CATEGORY_FOLDERS[activeFilter] || '';
+      updateActiveFolderLabel();
       renderProducts();
-      showToast(`Filtro aplicado: ${activeFilter}`);
+      showToast(`Pasta ${activeFolder || '/produtos'} aberta.`);
     });
   });
 }
@@ -864,8 +983,10 @@ function registerEvents() {
 
   document.getElementById('clearFilterBtn')?.addEventListener('click', () => {
     activeFilter = '';
+    activeFolder = '';
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.value = '';
+    updateActiveFolderLabel();
     renderProducts();
     showToast('Filtro removido.');
   });
@@ -875,6 +996,8 @@ function registerEvents() {
 
     button.addEventListener('click', () => {
       activeFilter = button.dataset.filter;
+      activeFolder = CATEGORY_FOLDERS[activeFilter] || '';
+      updateActiveFolderLabel();
       renderProducts();
       showToast(`Filtro aplicado: ${activeFilter}`);
     });
@@ -936,6 +1059,10 @@ function registerEvents() {
   });
 
   document.getElementById('authForm')?.addEventListener('submit', handleAuthSubmit);
+  document.getElementById('paymentMethod')?.addEventListener('change', updatePaymentInstallments);
+  document.getElementById('productModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'productModal') toggleProductModal(false);
+  });
 
   registerCategoryCards();
   registerAccountPanelEvents();
@@ -950,6 +1077,8 @@ function init() {
   renderWishlist();
   renderCheckout();
   updateCounters();
+  updateActiveFolderLabel();
+  updatePaymentInstallments();
   updateAuthUI();
   updateAccountButton();
   registerEvents();
