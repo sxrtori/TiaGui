@@ -1683,3 +1683,23 @@ textarea {
   display: flex;
   gap: 8px;
 }
+
+.breadcrumb { font-size: 0.9rem; color: #666; margin-bottom: 16px; }
+.breadcrumb a { color: var(--red); }
+.product-layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; background: #fff; border: 1px solid #eee; border-radius: 18px; padding: 20px; }
+.product-main-image { width: 100%; height: 460px; object-fit: cover; border-radius: 14px; }
+.product-thumbs { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.thumb-btn { width: 72px; height: 72px; border: 1px solid #ddd; border-radius: 10px; overflow: hidden; background: #fff; }
+.thumb-btn img { width: 100%; height: 100%; object-fit: cover; }
+.product-price-box { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.product-price-box strong { font-size: 1.9rem; }
+.product-actions-row { display: flex; gap: 10px; margin-top: 12px; }
+.frete-box { margin-top: 14px; }
+.frete-form { display: flex; gap: 8px; margin-top: 8px; }
+.frete-form input { flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+.btn-link { background: transparent; color: var(--red); padding: 6px 0; font-weight: 700; }
+
+@media (max-width: 900px) {
+  .product-layout { grid-template-columns: 1fr; }
+  .product-main-image { height: 320px; }
+}

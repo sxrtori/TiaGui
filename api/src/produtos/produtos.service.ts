@@ -12,17 +12,34 @@ export class ProdutosService {
     private readonly produtoRepository: Repository<Produto>,
   ) {}
 
-  async findAll(searchTerm?: string): Promise<Produto[]> {
-    if (searchTerm?.trim()) {
-      const term = `%${searchTerm.trim()}%`;
+  async findAll(filters?: {
+    q?: string;
+    id_categoria?: number;
+    promocao?: string;
+    vendedorId?: number;
+  }): Promise<Produto[]> {
+    const where: any = {};
+
+    if (filters?.id_categoria) where.id_categoria = filters.id_categoria;
+    if (filters?.promocao === 'true') where.promocao_ativa = true;
+    if (filters?.vendedorId) where.id_vendedor = filters.vendedorId;
+
+    if (filters?.q?.trim()) {
+      const term = `%${filters.q.trim()}%`;
       return this.produtoRepository.find({
-        where: [{ nome: ILike(term) }, { descricao: ILike(term) }, { genero: ILike(term) }],
-        order: { id_produto: 'ASC' },
+        where: [
+          { ...where, nome: ILike(term) },
+          { ...where, descricao: ILike(term) },
+          { ...where, marca: ILike(term) },
+          { ...where, modalidade: ILike(term) },
+        ],
+        order: { created_at: 'DESC' },
       });
     }
 
     return this.produtoRepository.find({
-      order: { id_produto: 'ASC' },
+      where,
+      order: { created_at: 'DESC' },
     });
   }
 
@@ -31,10 +48,7 @@ export class ProdutosService {
       where: { id_produto: id },
     });
 
-    if (!produto) {
-      throw new NotFoundException('Produto não encontrado');
-    }
-
+    if (!produto) throw new NotFoundException('Produto não encontrado');
     return produto;
   }
 
@@ -45,16 +59,23 @@ export class ProdutosService {
 
   async update(id: number, updateProdutoDto: UpdateProdutoDto): Promise<Produto> {
     const produto = await this.findOne(id);
-
     Object.assign(produto, updateProdutoDto);
-
     return this.produtoRepository.save(produto);
+  }
+
+  async updatePromotion(id: number, promocao_ativa: boolean, desconto?: number) {
+    const payload: UpdateProdutoDto = { promocao_ativa };
+    if (typeof desconto === 'number') payload.desconto = desconto;
+    return this.update(id, payload);
+  }
+
+  async updateStock(id: number, estoque: number) {
+    return this.update(id, { estoque });
   }
 
   async remove(id: number): Promise<{ message: string }> {
     const produto = await this.findOne(id);
     await this.produtoRepository.remove(produto);
-
     return { message: 'Produto removido com sucesso' };
   }
 }
