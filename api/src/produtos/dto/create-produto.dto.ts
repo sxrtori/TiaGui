@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsInt,
   IsNumber,
+  Matches,
   IsOptional,
   IsString,
   Max,
@@ -89,6 +90,32 @@ export class CreateProdutoDto {
   @IsOptional()
   @IsBoolean()
   ativo?: boolean;
+
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  peso_kg?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  altura_cm?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  largura_cm?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  comprimento_cm?: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5}-?\d{3}$/)
+  origem_cep?: string;
 
   @IsOptional()
   @IsString()
