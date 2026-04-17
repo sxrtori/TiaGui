@@ -1515,3 +1515,171 @@ textarea {
   background: #111;
   color: #fff;
 }
+
+/* ==== Refactor conversion UI ==== */
+.advanced-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.advanced-filters input,
+.advanced-filters select {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.old-price {
+  text-decoration: line-through;
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.discount-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: #111;
+  color: #fff;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.product-media {
+  position: relative;
+}
+
+.product-rating-row {
+  font-weight: 700;
+  margin: 8px 0;
+}
+
+.product-rating-row span {
+  color: #666;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.product-headline small {
+  color: #666;
+  font-weight: 700;
+}
+
+.skeleton-card {
+  border: 1px solid #eee;
+  border-radius: 16px;
+  padding: 12px;
+  background: #fff;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.skeleton-img {
+  height: 180px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f1f1f1, #fafafa, #f1f1f1);
+  margin-bottom: 12px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 999px;
+  background: #efefef;
+  margin-bottom: 8px;
+}
+
+.skeleton-line.short {
+  width: 60%;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.75; }
+  50% { opacity: 1; }
+  100% { opacity: 0.75; }
+}
+
+.empty-state {
+  border: 1px dashed #ddd;
+  border-radius: 16px;
+  padding: 26px;
+  text-align: center;
+  background: #fff;
+  display: grid;
+  gap: 10px;
+}
+
+.publish-success {
+  border: 1px solid #e7e7e7;
+  border-left: 4px solid var(--red);
+  border-radius: 14px;
+  padding: 16px;
+  background: #fff;
+  display: grid;
+  gap: 10px;
+}
+
+.reviews-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.review-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.review-item {
+  background: #f7f7f7;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.review-item header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.account-segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.account-segmented .account-menu-item.active {
+  background: #111;
+  color: #fff;
+}
+
+.account-panel-content {
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.account-item {
+  border: 1px solid #efefef;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
