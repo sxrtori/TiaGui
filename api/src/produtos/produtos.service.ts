@@ -142,7 +142,7 @@ export class ProdutosService {
     }
     if (seller.vendedor_bloqueado) {
       throw new ForbiddenException(
-        seller.motivo_bloqueio || 'Vendedor bloqueado por média de avaliação inferior a 4.0',
+        seller.motivo_bloqueio || 'Vendedor bloqueado: 15+ avaliações com média inferior a 3.5',
       );
     }
   }

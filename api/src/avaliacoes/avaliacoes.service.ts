@@ -162,13 +162,14 @@ export class AvaliacoesService {
     const media = total
       ? Number((reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total).toFixed(2))
       : 0;
-    const blocked = total > 0 && media < 4;
+    const blocked = total >= 15 && media < 3.5;
     await this.usuarioRepository.update(id_vendedor, {
       media_avaliacao_vendedor: media,
       total_avaliacoes_vendedor: total,
       vendedor_bloqueado: blocked,
+      cpf_bloqueado_venda: blocked,
       motivo_bloqueio: blocked
-        ? 'Conta bloqueada para vender: média de avaliação do vendedor abaixo de 4.0'
+        ? 'Conta bloqueada para vender: 15+ avaliações com média inferior a 3.5'
         : undefined,
     });
   }

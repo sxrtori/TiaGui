@@ -16,7 +16,7 @@ const FREE_SHIPPING_THRESHOLD = 400;
 
 @Injectable()
 export class FreteService {
-  calcularFrete(payload: CalcularFreteDto) {
+  async calcularFrete(payload: CalcularFreteDto) {
     const subtotal = Number(payload.subtotal || 0);
     const cepNumerico = Number(String(payload.cep).replace(/\D/g, ''));
     const distanciaFactor = Number.isNaN(cepNumerico)
@@ -78,12 +78,50 @@ export class FreteService {
             : undefined,
     }));
 
+    const enderecoDestino = await this.buscarEnderecoPorCep(payload.cep);
+
     return {
       origem: { cidade: 'São Paulo', estado: 'SP', cep: ORIGEM_CEP },
       destinoCep: payload.cep,
+      destinoEndereco: enderecoDestino,
       freteGratisAtivo: subtotal >= FREE_SHIPPING_THRESHOLD,
       limiteFreteGratis: FREE_SHIPPING_THRESHOLD,
       opcoes,
     };
+  }
+
+  private async buscarEnderecoPorCep(cep: string) {
+    const digits = String(cep || '').replace(/\D/g, '');
+    if (digits.length !== 8) {
+      return {
+        cep,
+        rua: '',
+        bairro: '',
+        cidade: '',
+        estado: '',
+      };
+    }
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      if (!response.ok) throw new Error('CEP indisponível');
+      const data = await response.json();
+      if (data?.erro) throw new Error('CEP não encontrado');
+      return {
+        cep: `${digits.slice(0, 5)}-${digits.slice(5)}`,
+        rua: data.logradouro || '',
+        bairro: data.bairro || '',
+        cidade: data.localidade || '',
+        estado: String(data.uf || '').toUpperCase(),
+      };
+    } catch (_error) {
+      return {
+        cep: `${digits.slice(0, 5)}-${digits.slice(5)}`,
+        rua: '',
+        bairro: '',
+        cidade: '',
+        estado: '',
+      };
+    }
   }
 }

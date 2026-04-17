@@ -53,7 +53,7 @@ export class UsuariosService {
     }
 
     if (createUsuarioDto.tipo_usuario === 'vendedor') {
-      this.validateSellerEligibility(createUsuarioDto.cpf, createUsuarioDto.data_nascimento);
+      await this.validateSellerEligibility(createUsuarioDto.cpf, createUsuarioDto.data_nascimento);
     }
 
     const usuario = this.usuarioRepository.create({
@@ -76,7 +76,7 @@ export class UsuariosService {
     }
 
     if (usuario.tipo_usuario === 'vendedor') {
-      this.validateSellerEligibility(usuario.cpf, usuario.data_nascimento);
+      await this.validateSellerEligibility(usuario.cpf, usuario.data_nascimento, usuario.id_usuario);
       if (usuario.vendedor_bloqueado) {
         throw new UnauthorizedException(
           usuario.motivo_bloqueio || 'Conta de vendedor bloqueada por baixa avaliação',
@@ -108,9 +108,10 @@ export class UsuariosService {
     }
 
     if ((updateUsuarioDto.tipo_usuario || usuario.tipo_usuario) === 'vendedor') {
-      this.validateSellerEligibility(
+      await this.validateSellerEligibility(
         updateUsuarioDto.cpf ?? usuario.cpf,
         updateUsuarioDto.data_nascimento ?? usuario.data_nascimento,
+        usuario.id_usuario,
       );
     }
 
@@ -169,13 +170,25 @@ export class UsuariosService {
     return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
   }
 
-  private validateSellerEligibility(cpf?: string, birthDate?: string | Date): void {
+  private async validateSellerEligibility(
+    cpf?: string,
+    birthDate?: string | Date,
+    currentUserId?: number,
+  ): Promise<void> {
     const normalizedCpf = String(cpf || '').replace(/\D/g, '');
     if (!normalizedCpf) {
       throw new BadRequestException('CPF é obrigatório para vendedor');
     }
     if (!this.isValidCpf(normalizedCpf)) {
       throw new BadRequestException('CPF inválido para vendedor');
+    }
+
+    const formattedCpf = this.normalizeCpf(normalizedCpf);
+    const blockedCpfOwner = await this.usuarioRepository.findOne({
+      where: { cpf: formattedCpf, cpf_bloqueado_venda: true },
+    });
+    if (blockedCpfOwner && blockedCpfOwner.id_usuario !== currentUserId) {
+      throw new BadRequestException('CPF bloqueado para venda no site');
     }
 
     if (!birthDate) {
