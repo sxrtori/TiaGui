@@ -48,7 +48,7 @@ const DEFAULT_KITS = [
   },
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [] };
+const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [], shippingOrigin: null };
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -141,6 +141,16 @@ async function calculateShipping(cep, subtotal) {
     method: 'POST',
     body: JSON.stringify({ cep: formatCep(cleanCep), subtotal: Number(subtotal || 0) }),
   });
+}
+
+async function fetchAddressByCep(cep) {
+  const cleanCep = sanitizeCep(cep);
+  if (cleanCep.length !== 8) throw new Error('CEP inválido');
+  const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+  if (!response.ok) throw new Error('Falha ao buscar CEP');
+  const data = await response.json();
+  if (data.erro) throw new Error('CEP não encontrado');
+  return data;
 }
 
 async function loadProducts() {
@@ -359,12 +369,13 @@ async function renderProductPage() {
     e.preventDefault();
     const cep = (document.getElementById('freteCep').value || '').trim();
     if (!cep) return showToast('Informe um CEP para calcular o frete.');
+    if (sanitizeCep(cep).length !== 8) return showToast('CEP inválido. Use o formato 00000-000.');
     const resultEl = document.getElementById('freteResult');
     resultEl.innerHTML = '<small>Calculando...</small>';
     try {
       const result = await calculateShipping(cep, discountedPrice(p));
       const options = result.opcoes || [];
-      resultEl.innerHTML = options.map((op) => `<article class="shipping-option ${op.destaque || ''}"><strong>${op.nome}</strong><span>${currency(op.valor)} • ${op.prazoMin} a ${op.prazoMax} dias úteis</span></article>`).join('');
+      resultEl.innerHTML = options.map((op) => `<article class="shipping-option ${op.destaque || ''}"><strong>${op.nome}</strong><span>${currency(op.valor)} • ${op.prazoMin} a ${op.prazoMax} dias úteis • ${op.tipo || 'Padrão'}</span><small>Origem: ${result.origem?.cidade || 'São Paulo'}/${result.origem?.estado || 'SP'}</small></article>`).join('');
     } catch (_e) {
       resultEl.innerHTML = '<small>CEP inválido ou indisponível. Verifique e tente novamente.</small>';
     }
@@ -412,7 +423,7 @@ function renderMyProductsPage() {
   const target = document.getElementById('myProductsGrid');
   if (!target) return;
   const items = getSellerProducts();
-  target.innerHTML = items.length ? items.map((p) => `<article class="product-card"><div class="product-media"><img src="${p.imagem}" alt="${p.nome}"></div><div class="product-body"><h3>${p.nome}</h3><p>Estoque: ${p.estoque} • ${p.ativo ? 'Ativo' : 'Inativo'}</p><div class="product-actions"><a class="btn-card btn-light" href="editar-produto.html?id=${p.id}">Editar</a><button class="btn-card btn-light" data-action="toggle-active" data-id="${p.id}">${p.ativo ? 'Desativar' : 'Ativar'}</button><button class="btn-card btn-light" data-action="toggle-promo" data-id="${p.id}">${p.promocaoAtiva ? 'Remover promoção' : 'Colocar promoção'}</button><button class="btn-card btn-dark" data-action="delete-product" data-id="${p.id}">Excluir</button></div></div></article>`).join('') : '<p>Você ainda não publicou produtos.</p>';
+  target.innerHTML = items.length ? items.map((p) => `<article class="product-card seller-product-card"><div class="product-media"><img src="${p.imagem}" alt="${p.nome}"></div><div class="product-body"><small>${p.marca} • ${p.categoria}</small><h3>${p.nome}</h3><div class="product-meta"><div class="price-wrap"><strong>${currency(discountedPrice(p))}</strong>${Number(p.desconto) > 0 ? `<span class="old-price">${currency(p.preco)}</span>` : ''}</div><span class="product-rating-row">Estoque: ${p.estoque}</span></div><p class="seller-status">Status: ${p.ativo ? 'Ativo' : 'Inativo'} • ${p.promocaoAtiva ? 'Promoção ativa' : 'Sem promoção'}</p><div class="product-actions"><a class="btn-card btn-light" href="editar-produto.html?id=${p.id}">Editar</a><button class="btn-card btn-light" data-action="toggle-active" data-id="${p.id}">${p.ativo ? 'Desativar' : 'Ativar'}</button><button class="btn-card btn-light" data-action="toggle-promo" data-id="${p.id}">${p.promocaoAtiva ? 'Remover promoção' : 'Colocar promoção'}</button><button class="btn-card btn-dark" data-action="delete-product" data-id="${p.id}">Excluir</button></div></div></article>`).join('') : '<p>Você ainda não publicou produtos.</p>';
 }
 
 function fillEditForm() {
@@ -500,6 +511,7 @@ function updateHeaderUserUI() {
   const accountIcon = document.getElementById('accountIcon');
   const accountDropdownAvatar = document.getElementById('accountDropdownAvatar');
   const sellerMenuBtn = document.getElementById('sellerMenuBtn');
+  const sellerProductsMenuBtn = document.getElementById('sellerProductsMenuBtn');
   const openAuthBtn = document.getElementById('openAuthBtn');
 
   if (!openAuthBtn) return;
@@ -513,6 +525,7 @@ function updateHeaderUserUI() {
     accountIcon && (accountIcon.textContent = avatar);
     accountDropdownAvatar && (accountDropdownAvatar.textContent = avatar);
     sellerMenuBtn && (sellerMenuBtn.style.display = state.currentUser.type === 'vendedor' ? 'block' : 'none');
+    sellerProductsMenuBtn && (sellerProductsMenuBtn.style.display = state.currentUser.type === 'vendedor' ? 'block' : 'none');
     openAuthBtn.classList.add('is-authenticated');
   } else {
     accountLabel && (accountLabel.textContent = 'Entrar');
@@ -522,6 +535,7 @@ function updateHeaderUserUI() {
     accountIcon && (accountIcon.textContent = '👤');
     accountDropdownAvatar && (accountDropdownAvatar.textContent = '👤');
     sellerMenuBtn && (sellerMenuBtn.style.display = 'none');
+    sellerProductsMenuBtn && (sellerProductsMenuBtn.style.display = 'none');
     openAuthBtn.classList.remove('is-authenticated');
   }
 }
@@ -606,6 +620,7 @@ function renderWishlist() {
         <div>
           <strong>${product.nome}</strong>
           <p>${currency(discountedPrice(product))}</p>
+          <button class="btn-card btn-dark wishlist-add-single" data-action="wishlist-cart" data-id="${product.id}">Adicionar ao carrinho</button>
         </div>
         <button class="btn-link" data-action="wish" data-id="${product.id}">Remover</button>
       </article>
@@ -773,6 +788,12 @@ function toggleCheckout(open = true) {
   modal.classList.toggle('open', open);
 }
 
+function toggleWishlistMiniModal(open = true) {
+  const modal = document.getElementById('wishlistMiniModal');
+  if (!modal) return;
+  modal.classList.toggle('open', open);
+}
+
 function handleGlobalClick(e) {
   const quickAdd = e.target.closest('.add-to-cart');
   if (quickAdd?.dataset.id) addToCart(Number(quickAdd.dataset.id));
@@ -784,6 +805,10 @@ function handleGlobalClick(e) {
     if (action.dataset.action === 'increase-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty += 1; saveSessionState(); renderCart(); }
     if (action.dataset.action === 'decrease-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty -= 1; state.cart = state.cart.filter((x) => x.qty > 0); saveSessionState(); renderCart(); }
     if (action.dataset.action === 'remove-cart') { state.cart = state.cart.filter((x) => Number(x.id) !== id); saveSessionState(); renderCart(); }
+    if (action.dataset.action === 'wishlist-cart') {
+      addToCart(id, { skipAuth: true });
+      toggleWishlistMiniModal(true);
+    }
     if (action.dataset.action === 'delete-product') deleteProduct(id);
     if (action.dataset.action === 'toggle-active') quickUpdateProduct(id, (p) => ({ ...p, ativo: !p.ativo }));
     if (action.dataset.action === 'toggle-promo') quickUpdateProduct(id, (p) => ({ ...p, promocaoAtiva: !p.promocaoAtiva, desconto: p.desconto || 10 }));
@@ -853,6 +878,7 @@ function setupAuthUi() {
     else openAuthModal('login');
   });
   document.getElementById('sellerMenuBtn')?.addEventListener('click', () => (window.location.href = 'vender.html'));
+  document.getElementById('sellerProductsMenuBtn')?.addEventListener('click', () => (window.location.href = 'meus-produtos.html'));
   document.getElementById('logoutBtn')?.addEventListener('click', () => {
     state.currentUser = null;
     state.authToken = '';
@@ -876,8 +902,23 @@ function setupAuthUi() {
   document.getElementById('checkoutCep')?.addEventListener('input', (event) => {
     event.target.value = formatCep(event.target.value);
   });
+  document.getElementById('checkoutCep')?.addEventListener('blur', async (event) => {
+    const cep = event.target.value || '';
+    const cleanCep = sanitizeCep(cep);
+    if (cleanCep.length !== 8) return;
+    try {
+      const address = await fetchAddressByCep(cleanCep);
+      document.getElementById('checkoutStreet') && (document.getElementById('checkoutStreet').value = address.logradouro || '');
+      document.getElementById('checkoutDistrict') && (document.getElementById('checkoutDistrict').value = address.bairro || '');
+      document.getElementById('checkoutCity') && (document.getElementById('checkoutCity').value = address.localidade || '');
+      document.getElementById('checkoutState') && (document.getElementById('checkoutState').value = String(address.uf || '').toUpperCase());
+    } catch (_error) {
+      showToast('CEP não encontrado para auto preenchimento.');
+    }
+  });
   document.getElementById('checkoutCalcShippingBtn')?.addEventListener('click', async () => {
     const cep = document.getElementById('checkoutCep')?.value || '';
+    if (sanitizeCep(cep).length !== 8) return showToast('CEP inválido. Informe 8 dígitos.');
     const entries = getCartEntries();
     const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
     if (!subtotal) return showToast('Adicione itens ao carrinho antes de calcular o frete.');
@@ -888,10 +929,11 @@ function setupAuthUi() {
       const result = await calculateShipping(cep, subtotal);
       state.shippingOptions = result.opcoes || [];
       state.shippingOption = state.shippingOptions[0] || null;
+      state.shippingOrigin = result.origem || null;
       list.innerHTML = state.shippingOptions.map((option, index) => `
         <label class="shipping-option selectable ${option.destaque || ''}">
           <input type="radio" name="checkoutShippingOption" value="${option.id}" ${index === 0 ? 'checked' : ''}/>
-          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis</span></div>
+          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${state.shippingOrigin ? `<small>Origem: ${state.shippingOrigin.cidade}/${state.shippingOrigin.estado}</small>` : ''}</div>
         </label>
       `).join('');
       updateCartTotals();
@@ -904,6 +946,18 @@ function setupAuthUi() {
     state.shippingOption = state.shippingOptions.find((option) => option.id === optionId) || null;
     updateCartTotals();
   });
+  const installmentsGroup = document.getElementById('installmentsGroup');
+  const installmentsSelect = document.getElementById('installmentsSelect');
+  const paymentMethod = document.getElementById('paymentMethod');
+  const syncPaymentInstallments = () => {
+    if (!paymentMethod || !installmentsGroup || !installmentsSelect) return;
+    const cardSelected = paymentMethod.value === 'credito';
+    installmentsGroup.style.display = cardSelected ? '' : 'none';
+    installmentsSelect.disabled = !cardSelected;
+    if (!cardSelected) installmentsSelect.value = '1x sem juros';
+  };
+  paymentMethod?.addEventListener('change', syncPaymentInstallments);
+  syncPaymentInstallments();
   document.getElementById('finishOrderBtn')?.addEventListener('click', () => {
     if (!state.currentUser) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
     if (!state.cart.length) return showToast('Seu carrinho está vazio.');
@@ -916,8 +970,20 @@ function setupAuthUi() {
   document.getElementById('addAllWishlistBtn')?.addEventListener('click', () => {
     ensureAuth(() => {
       state.wishlist.forEach((id) => addToCart(id, { skipAuth: true }));
+      toggleWishlistMiniModal(true);
       toggleWishlist(false);
     }, 'Faça login para continuar');
+  });
+  document.getElementById('wishlistMiniGoCheckout')?.addEventListener('click', () => {
+    toggleWishlistMiniModal(false);
+    toggleWishlist(false);
+    ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
+  });
+  document.getElementById('wishlistMiniContinue')?.addEventListener('click', () => {
+    toggleWishlistMiniModal(false);
+  });
+  document.getElementById('wishlistMiniModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'wishlistMiniModal') toggleWishlistMiniModal(false);
   });
 
   document.addEventListener('click', (event) => {

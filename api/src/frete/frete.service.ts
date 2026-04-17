@@ -4,6 +4,7 @@ import { CalcularFreteDto } from './dto/calcular-frete.dto';
 type FreteOpcao = {
   id: string;
   nome: string;
+  tipo: 'expresso' | 'economico' | 'retirada';
   prazoMin: number;
   prazoMax: number;
   valor: number;
@@ -22,13 +23,21 @@ export class FreteService {
       ? 1
       : Math.min(Math.max((cepNumerico % 1000) / 1000, 0.1), 0.95);
 
-    const base = [
-      { id: 'sedex', nome: 'Sedex', prazoMin: 1, prazoMax: 3, valorBase: 49.9, peso: 12 },
-      { id: 'pac', nome: 'PAC', prazoMin: 4, prazoMax: 8, valorBase: 22.9, peso: 8 },
-      { id: 'correios', nome: 'Correios', prazoMin: 3, prazoMax: 6, valorBase: 29.9, peso: 10 },
-      { id: 'expressa', nome: 'Expressa', prazoMin: 1, prazoMax: 2, valorBase: 59.9, peso: 15 },
-      { id: 'economica', nome: 'Econômica', prazoMin: 5, prazoMax: 10, valorBase: 18.9, peso: 6 },
-      { id: 'retirada', nome: 'Retirada em loja (SP)', prazoMin: 0, prazoMax: 1, valorBase: 0, peso: 0 },
+    const base: Array<{
+      id: string;
+      nome: string;
+      tipo: FreteOpcao['tipo'];
+      prazoMin: number;
+      prazoMax: number;
+      valorBase: number;
+      peso: number;
+    }> = [
+      { id: 'sedex', nome: 'Sedex', tipo: 'expresso', prazoMin: 1, prazoMax: 3, valorBase: 49.9, peso: 12 },
+      { id: 'pac', nome: 'PAC', tipo: 'economico', prazoMin: 4, prazoMax: 8, valorBase: 22.9, peso: 8 },
+      { id: 'correios', nome: 'Correios', tipo: 'economico', prazoMin: 3, prazoMax: 6, valorBase: 29.9, peso: 10 },
+      { id: 'expressa', nome: 'Expressa', tipo: 'expresso', prazoMin: 1, prazoMax: 2, valorBase: 59.9, peso: 15 },
+      { id: 'economica', nome: 'Econômica', tipo: 'economico', prazoMin: 5, prazoMax: 10, valorBase: 18.9, peso: 6 },
+      { id: 'retirada', nome: 'Retirada em loja (SP)', tipo: 'retirada', prazoMin: 0, prazoMax: 1, valorBase: 0, peso: 0 },
     ];
 
     let opcoes: FreteOpcao[] = base.map((item) => {
@@ -38,6 +47,7 @@ export class FreteService {
       return {
         id: item.id,
         nome: item.nome,
+        tipo: item.tipo,
         prazoMin: item.prazoMin,
         prazoMax: item.prazoMax,
         valor,

@@ -56,6 +56,7 @@
               <button class="account-menu-item" data-account-view="actions">Ações</button>
             </div>
             <div id="accountPanelContent" class="account-panel-content"></div>
+            <button class="account-menu-item" id="sellerProductsMenuBtn" style="display:none;">📦 Meus produtos</button>
             <button class="account-menu-item" id="sellerMenuBtn" style="display:none;">🏪 Vender produto</button>
             <button class="account-menu-item danger" id="logoutBtn">↩ Sair</button>
           </div>
@@ -616,6 +617,17 @@
             <button class="btn btn-primary full-width top-gap-sm" id="finishOrderBtn">Confirmar pedido</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wishlist-mini-modal" id="wishlistMiniModal">
+    <div class="wishlist-mini-panel">
+      <h3>Itens adicionados ao carrinho</h3>
+      <p>Deseja finalizar sua compra agora?</p>
+      <div class="wishlist-mini-actions">
+        <button class="btn btn-primary full-width" id="wishlistMiniGoCheckout">Ir para pagamento</button>
+        <button class="btn btn-light full-width" id="wishlistMiniContinue">Continuar navegando</button>
       </div>
     </div>
   </div>
