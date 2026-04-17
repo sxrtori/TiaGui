@@ -48,7 +48,7 @@ const DEFAULT_KITS = [
   },
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [], shippingOrigin: null };
+const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [], shippingOrigin: null, shippingZipCode: '' };
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -132,6 +132,49 @@ function formatCep(value = '') {
   const digits = sanitizeCep(value);
   if (digits.length <= 5) return digits;
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
+function getCheckoutAddress() {
+  return {
+    cep: formatCep(document.getElementById('checkoutCep')?.value || ''),
+    rua: (document.getElementById('checkoutStreet')?.value || '').trim(),
+    numero: (document.getElementById('checkoutNumber')?.value || '').trim(),
+    bairro: (document.getElementById('checkoutDistrict')?.value || '').trim(),
+    cidade: (document.getElementById('checkoutCity')?.value || '').trim(),
+    estado: (document.getElementById('checkoutState')?.value || '').trim().toUpperCase(),
+    complemento: (document.getElementById('checkoutComplement')?.value || '').trim(),
+  };
+}
+
+function computeCartPricing() {
+  const entries = getCartEntries();
+  const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
+  const cashback = entries.reduce((sum, { product, qty }) => sum + ((discountedPrice(product) * qty) * Number(product.cashback || 0) / 100), 0);
+  const freeShipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0;
+  const selectedShippingValue = Number(state.shippingOption?.valor ?? 0);
+  const shipping = freeShipping ? 0 : (Number.isFinite(selectedShippingValue) && selectedShippingValue >= 0 ? selectedShippingValue : 0);
+  const total = subtotal + shipping;
+  return { entries, subtotal, cashback, shipping, total, freeShipping };
+}
+
+function renderCheckoutSummaryItems(entries) {
+  const summaryEl = document.getElementById('checkoutSummary');
+  if (!summaryEl) return;
+  if (!entries.length) {
+    summaryEl.innerHTML = '<div class="empty-state"><h3>Seu carrinho está vazio.</h3></div>';
+    return;
+  }
+  summaryEl.innerHTML = entries.map(({ product, qty, selectedColor, selectedSize }) => `
+    <article class="drawer-item">
+      <img src="${product.imagem}" alt="${product.nome}" />
+      <div>
+        <strong>${product.nome}</strong>
+        <p>${currency(discountedPrice(product))}</p>
+        <small>${selectedColor ? `Cor: ${selectedColor}` : ''} ${selectedSize ? `• Tam: ${selectedSize}` : ''}</small>
+        <small>Qtd: ${qty}</small>
+      </div>
+    </article>
+  `).join('');
 }
 
 async function calculateShipping(cep, subtotal) {
@@ -564,19 +607,33 @@ function getCartEntries() {
 }
 
 function updateCartTotals() {
-  const entries = getCartEntries();
-  const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
-  const selectedShippingValue = Number(state.shippingOption?.valor ?? NaN);
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : (Number.isNaN(selectedShippingValue) ? 24.9 : selectedShippingValue);
-  const cashback = entries.reduce((sum, { product, qty }) => sum + ((discountedPrice(product) * qty) * Number(product.cashback || 0) / 100), 0);
+  const { entries, subtotal, cashback, shipping, total, freeShipping } = computeCartPricing();
   const subtotalEl = document.getElementById('cartSubtotal');
   const totalEl = document.getElementById('cartTotal');
   const cashbackEl = document.getElementById('cartCashback');
   const shippingEl = document.getElementById('cartShipping');
+  const checkoutSubtotalEl = document.getElementById('checkoutSubtotal');
+  const checkoutTotalEl = document.getElementById('checkoutTotal');
+  const checkoutCashbackEl = document.getElementById('checkoutCashback');
+  const checkoutShippingEl = document.getElementById('checkoutShipping');
+  const checkoutShippingLabelEl = document.getElementById('checkoutShippingLabel');
   if (subtotalEl) subtotalEl.textContent = currency(subtotal);
   if (shippingEl) shippingEl.textContent = shipping === 0 ? 'Grátis' : currency(shipping);
-  if (totalEl) totalEl.textContent = currency(subtotal + shipping);
+  if (totalEl) totalEl.textContent = currency(total);
   if (cashbackEl) cashbackEl.textContent = currency(cashback);
+  if (checkoutSubtotalEl) checkoutSubtotalEl.textContent = currency(subtotal);
+  if (checkoutShippingEl) checkoutShippingEl.textContent = shipping === 0 ? 'Grátis' : currency(shipping);
+  if (checkoutCashbackEl) checkoutCashbackEl.textContent = currency(cashback);
+  if (checkoutTotalEl) checkoutTotalEl.textContent = currency(total);
+  if (checkoutShippingLabelEl) checkoutShippingLabelEl.textContent = freeShipping ? 'Frete (grátis acima de R$ 400)' : 'Frete';
+  renderCheckoutSummaryItems(entries);
+}
+
+function refreshShippingSelectionUi() {
+  document.querySelectorAll('#checkoutShippingOptions .shipping-option.selectable').forEach((node) => {
+    const input = node.querySelector('input[name="checkoutShippingOption"]');
+    node.classList.toggle('is-selected', Boolean(input?.checked));
+  });
 }
 
 function renderCart() {
@@ -786,6 +843,13 @@ function toggleCheckout(open = true) {
   const modal = document.getElementById('checkoutModal');
   if (!modal) return;
   modal.classList.toggle('open', open);
+  if (open) {
+    if (state.currentUser) {
+      document.getElementById('checkoutName') && (document.getElementById('checkoutName').value = state.currentUser.name || state.currentUser.nome || '');
+      document.getElementById('checkoutEmail') && (document.getElementById('checkoutEmail').value = state.currentUser.email || '');
+    }
+    updateCartTotals();
+  }
 }
 
 function toggleWishlistMiniModal(open = true) {
@@ -898,9 +962,16 @@ function setupAuthUi() {
 
   document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
   document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
-  document.getElementById('checkoutOpenBtn')?.addEventListener('click', () => ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra'));
+  document.getElementById('checkoutOpenBtn')?.addEventListener('click', () => ensureAuth(() => {
+    toggleCheckout(true);
+    updateCartTotals();
+  }, 'Faça login para finalizar a compra'));
   document.getElementById('checkoutCep')?.addEventListener('input', (event) => {
     event.target.value = formatCep(event.target.value);
+    const cleanCep = sanitizeCep(event.target.value || '');
+    if (cleanCep.length === 8 && cleanCep !== state.shippingZipCode) {
+      event.target.dispatchEvent(new Event('blur'));
+    }
   });
   document.getElementById('checkoutCep')?.addEventListener('blur', async (event) => {
     const cep = event.target.value || '';
@@ -912,6 +983,10 @@ function setupAuthUi() {
       document.getElementById('checkoutDistrict') && (document.getElementById('checkoutDistrict').value = address.bairro || '');
       document.getElementById('checkoutCity') && (document.getElementById('checkoutCity').value = address.localidade || '');
       document.getElementById('checkoutState') && (document.getElementById('checkoutState').value = String(address.uf || '').toUpperCase());
+      if (!document.getElementById('checkoutComplement')?.value) {
+        document.getElementById('checkoutComplement') && (document.getElementById('checkoutComplement').value = address.complemento || '');
+      }
+      state.shippingZipCode = cleanCep;
     } catch (_error) {
       showToast('CEP não encontrado para auto preenchimento.');
     }
@@ -930,12 +1005,14 @@ function setupAuthUi() {
       state.shippingOptions = result.opcoes || [];
       state.shippingOption = state.shippingOptions[0] || null;
       state.shippingOrigin = result.origem || null;
+      state.shippingZipCode = sanitizeCep(cep);
       list.innerHTML = state.shippingOptions.map((option, index) => `
-        <label class="shipping-option selectable ${option.destaque || ''}">
+        <label class="shipping-option selectable ${option.destaque || ''} ${index === 0 ? 'is-selected' : ''}">
           <input type="radio" name="checkoutShippingOption" value="${option.id}" ${index === 0 ? 'checked' : ''}/>
           <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${state.shippingOrigin ? `<small>Origem: ${state.shippingOrigin.cidade}/${state.shippingOrigin.estado}</small>` : ''}</div>
         </label>
       `).join('');
+      refreshShippingSelectionUi();
       updateCartTotals();
     } catch (_error) {
       list.innerHTML = '<small>Não foi possível calcular o frete. Confira o CEP.</small>';
@@ -944,6 +1021,7 @@ function setupAuthUi() {
   document.getElementById('checkoutShippingOptions')?.addEventListener('change', (event) => {
     const optionId = event.target.value;
     state.shippingOption = state.shippingOptions.find((option) => option.id === optionId) || null;
+    refreshShippingSelectionUi();
     updateCartTotals();
   });
   const installmentsGroup = document.getElementById('installmentsGroup');
@@ -958,11 +1036,58 @@ function setupAuthUi() {
   };
   paymentMethod?.addEventListener('change', syncPaymentInstallments);
   syncPaymentInstallments();
-  document.getElementById('finishOrderBtn')?.addEventListener('click', () => {
+  document.getElementById('finishOrderBtn')?.addEventListener('click', async () => {
     if (!state.currentUser) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
     if (!state.cart.length) return showToast('Seu carrinho está vazio.');
+    const { entries, subtotal, cashback, shipping, total } = computeCartPricing();
+    const address = getCheckoutAddress();
+    const payload = {
+      id_usuario: Number(state.currentUser?.id_usuario || state.currentUser?.id || 0),
+      id_endereco: 1,
+      status: 'pendente',
+      forma_pagamento: document.getElementById('paymentMethod')?.value || 'credito',
+      total: Number(total.toFixed(2)),
+      resumo_checkout: {
+        subtotal: Number(subtotal.toFixed(2)),
+        frete: Number(shipping.toFixed(2)),
+        cashback: Number(cashback.toFixed(2)),
+        total: Number(total.toFixed(2)),
+      },
+      entrega: state.shippingOption ? {
+        modalidadeId: state.shippingOption.id,
+        modalidadeNome: state.shippingOption.nome,
+        prazoMin: state.shippingOption.prazoMin,
+        prazoMax: state.shippingOption.prazoMax,
+        valor: Number(state.shippingOption.valor || 0),
+        origem: state.shippingOrigin,
+      } : null,
+      endereco_entrega: address,
+      itens: entries.map(({ product, qty, selectedSize, selectedColor }) => ({
+        id_produto: product.id,
+        nome: product.nome,
+        quantidade: qty,
+        preco_unitario: Number(discountedPrice(product).toFixed(2)),
+        tamanho: selectedSize,
+        cor: selectedColor,
+      })),
+    };
+    try {
+      await apiRequest('/pedidos', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (_error) {
+      const localOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.orders) || '[]');
+      localOrders.push({ ...payload, id_local: Date.now(), criado_em: new Date().toISOString() });
+      localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(localOrders));
+    }
     showToast('Pedido confirmado com sucesso.');
     state.cart = [];
+    state.shippingOption = null;
+    state.shippingOptions = [];
+    state.shippingZipCode = '';
+    const shippingOptions = document.getElementById('checkoutShippingOptions');
+    if (shippingOptions) shippingOptions.innerHTML = '';
     saveSessionState();
     renderCart();
     toggleCheckout(false);

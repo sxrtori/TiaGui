@@ -55,11 +55,7 @@ export class FreteService {
     });
 
     if (subtotal >= FREE_SHIPPING_THRESHOLD) {
-      opcoes = opcoes.map((item) =>
-        item.id === 'retirada' || item.id === 'economica'
-          ? item
-          : { ...item, valor: 0 },
-      );
+      opcoes = opcoes.map((item) => ({ ...item, valor: 0 }));
     }
 
     const maisRapida = opcoes.reduce((acc, item) =>
