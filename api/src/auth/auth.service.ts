@@ -30,6 +30,7 @@ export class AuthService {
         cpf: usuario.cpf,
         data_nascimento: usuario.data_nascimento,
         vendedor_bloqueado: usuario.vendedor_bloqueado,
+        cpf_bloqueado_venda: usuario.cpf_bloqueado_venda,
         media_avaliacao_vendedor: usuario.media_avaliacao_vendedor,
         total_avaliacoes_vendedor: usuario.total_avaliacoes_vendedor,
         motivo_bloqueio: usuario.motivo_bloqueio,

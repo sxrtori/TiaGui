@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS usuario (
     cpf VARCHAR(14) UNIQUE,
     data_nascimento DATE,
     vendedor_bloqueado BOOLEAN DEFAULT FALSE,
+    cpf_bloqueado_venda BOOLEAN DEFAULT FALSE,
     media_avaliacao_vendedor DECIMAL(3,2) DEFAULT 0,
     total_avaliacoes_vendedor INT DEFAULT 0,
     motivo_bloqueio TEXT,

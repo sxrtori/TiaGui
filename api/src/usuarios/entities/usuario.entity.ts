@@ -26,6 +26,9 @@ export class Usuario {
   @Column({ type: 'boolean', default: false })
   vendedor_bloqueado: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  cpf_bloqueado_venda: boolean;
+
   @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
   media_avaliacao_vendedor: number;
 

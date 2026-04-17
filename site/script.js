@@ -191,6 +191,13 @@ function computeCartPricing() {
   return { entries, subtotal, cashback, shipping, total, freeShipping };
 }
 
+function formatShippingDeadline(option = {}) {
+  const min = Number(option.prazoMin ?? 0);
+  const max = Number(option.prazoMax ?? min);
+  if (min === max) return `${min} dia${min === 1 ? '' : 's'} úteis`;
+  return `${min} a ${max} dias úteis`;
+}
+
 function renderCheckoutSummaryItems(entries) {
   const summaryEl = document.getElementById('checkoutSummary');
   if (!summaryEl) return;
@@ -220,7 +227,7 @@ async function calculateShipping(cep, subtotal) {
   });
 }
 
-function renderShippingOptions(result, { selectable = false, selectedId = '' } = {}) {
+function renderShippingOptions(result, { selectable = false, selectedId = '', inputName = 'checkoutShippingOption' } = {}) {
   const options = result?.opcoes || [];
   if (!options.length) return '<small>Sem opções disponíveis para este CEP.</small>';
   return options.map((option, index) => {
@@ -228,12 +235,12 @@ function renderShippingOptions(result, { selectable = false, selectedId = '' } =
     if (selectable) {
       return `
         <label class="shipping-option selectable ${option.destaque || ''} ${selected ? 'is-selected' : ''}">
-          <input type="radio" name="checkoutShippingOption" value="${option.id}" ${selected ? 'checked' : ''}/>
-          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</div>
+          <input type="radio" name="${inputName}" value="${option.id}" ${selected ? 'checked' : ''}/>
+          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${formatShippingDeadline(option)} • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</div>
         </label>
       `;
     }
-    return `<article class="shipping-option ${option.destaque || ''}"><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</article>`;
+    return `<article class="shipping-option ${option.destaque || ''}"><strong>${option.nome}</strong><span>${currency(option.valor)} • ${formatShippingDeadline(option)} • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</article>`;
   }).join('');
 }
 
@@ -483,8 +490,33 @@ async function renderProductPage() {
     const resultEl = document.getElementById('freteResult');
     resultEl.innerHTML = '<small>Calculando...</small>';
     try {
-      const result = await calculateShipping(cep, discountedPrice(p));
-      resultEl.innerHTML = renderShippingOptions(result, { selectable: false });
+      const [address, result] = await Promise.all([
+        fetchAddressByCep(cep),
+        calculateShipping(cep, discountedPrice(p)),
+      ]);
+      const selectedOption = result?.opcoes?.[0] || null;
+      resultEl.innerHTML = `
+        <div class="shipping-address">
+          <strong>Endereço do CEP</strong>
+          <span>${address.logradouro || 'Rua não informada'}</span>
+          <span>${address.bairro || 'Bairro não informado'} • ${address.localidade || ''}/${String(address.uf || '').toUpperCase()}</span>
+        </div>
+        <div class="shipping-options-list">
+          ${renderShippingOptions(result, { selectable: true, selectedId: selectedOption?.id || '', inputName: 'productShippingOption' })}
+        </div>
+      `;
+      resultEl.querySelectorAll('.shipping-option.selectable').forEach((node) => {
+        const input = node.querySelector('input[name="productShippingOption"]');
+        node.classList.toggle('is-selected', Boolean(input?.checked));
+      });
+      resultEl.querySelectorAll('input[name="productShippingOption"]').forEach((input) => {
+        input.addEventListener('change', () => {
+          resultEl.querySelectorAll('.shipping-option.selectable').forEach((node) => {
+            const optionInput = node.querySelector('input[name="productShippingOption"]');
+            node.classList.toggle('is-selected', Boolean(optionInput?.checked));
+          });
+        });
+      });
     } catch (_e) {
       resultEl.innerHTML = '<small>CEP inválido ou indisponível. Verifique e tente novamente.</small>';
     }
@@ -553,12 +585,12 @@ function getSellerAccountStatus() {
   if (!state.currentUser || state.currentUser.type !== 'vendedor') return { blocked: false, average: 0, total: 0, reason: '' };
   const average = Number(state.currentUser.media_avaliacao_vendedor || 0);
   const total = Number(state.currentUser.total_avaliacoes_vendedor || 0);
-  const blocked = Boolean(state.currentUser.vendedor_bloqueado) || (total > 0 && average < 4);
+  const blocked = Boolean(state.currentUser.vendedor_bloqueado) || (total >= 15 && average < 3.5);
   return {
     blocked,
     average,
     total,
-    reason: state.currentUser.motivo_bloqueio || (blocked ? 'Média do vendedor abaixo de 4.0' : ''),
+    reason: state.currentUser.motivo_bloqueio || (blocked ? 'Bloqueio automático: 15+ avaliações e média abaixo de 3.5.' : ''),
   };
 }
 
@@ -740,6 +772,64 @@ function refreshShippingSelectionUi() {
     const input = node.querySelector('input[name="checkoutShippingOption"]');
     node.classList.toggle('is-selected', Boolean(input?.checked));
   });
+}
+
+let checkoutShippingRequestId = 0;
+async function refreshCheckoutShippingOptions() {
+  const list = document.getElementById('checkoutShippingOptions');
+  if (!list) return;
+  const { subtotal, freeShipping } = computeCartPricing();
+  const cepValue = document.getElementById('checkoutCep')?.value || '';
+  const cleanCep = sanitizeCep(cepValue);
+
+  if (!subtotal) {
+    state.shippingOption = null;
+    state.shippingOptions = [];
+    list.innerHTML = '<small>Adicione produtos ao carrinho para exibir as opções de entrega.</small>';
+    updateCartTotals();
+    return;
+  }
+
+  if (freeShipping) {
+    state.shippingOptions = [];
+    state.shippingOption = { id: 'frete-gratis', nome: 'Frete grátis', tipo: 'gratis', valor: 0, prazoMin: 2, prazoMax: 7 };
+    list.innerHTML = '<article class="shipping-option shipping-free"><strong>🎉 Frete grátis liberado</strong><span>Pedidos a partir de R$ 400 recebem entrega sem custo.</span></article>';
+    updateCartTotals();
+    return;
+  }
+
+  if (cleanCep.length !== 8) {
+    state.shippingOption = null;
+    state.shippingOptions = [];
+    list.innerHTML = '<small>Informe um CEP válido para visualizar as opções de frete.</small>';
+    updateCartTotals();
+    return;
+  }
+
+  const requestId = ++checkoutShippingRequestId;
+  list.innerHTML = '<small>Buscando opções de frete...</small>';
+  try {
+    const result = await calculateShipping(cleanCep, subtotal);
+    if (requestId !== checkoutShippingRequestId) return;
+    state.shippingOptions = result.opcoes || [];
+    const selected = state.shippingOptions.find((option) => option.id === state.shippingOption?.id);
+    state.shippingOption = selected || state.shippingOptions[0] || null;
+    state.shippingOrigin = result.origem || null;
+    state.shippingZipCode = cleanCep;
+    list.innerHTML = renderShippingOptions(result, {
+      selectable: true,
+      selectedId: state.shippingOption?.id || '',
+      inputName: 'checkoutShippingOption',
+    });
+    refreshShippingSelectionUi();
+    updateCartTotals();
+  } catch (_error) {
+    if (requestId !== checkoutShippingRequestId) return;
+    state.shippingOption = null;
+    state.shippingOptions = [];
+    list.innerHTML = '<small>Não foi possível buscar o frete para este CEP.</small>';
+    updateCartTotals();
+  }
 }
 
 function renderCart() {
@@ -943,6 +1033,7 @@ function addToCart(id, options = {}) {
   if (item) item.qty += 1; else state.cart.push({ id: Number(id), qty: 1, selectedSize: options.selectedSize || '', selectedColor: options.selectedColor || '', selectedColorHex: options.selectedColorHex || '' });
   saveSessionState();
   renderCart();
+  refreshCheckoutShippingOptions();
   showToast('Produto adicionado ao carrinho.');
 }
 
@@ -986,6 +1077,7 @@ function toggleCheckout(open = true) {
       document.getElementById('checkoutEmail') && (document.getElementById('checkoutEmail').value = state.currentUser.email || '');
     }
     updateCartTotals();
+    refreshCheckoutShippingOptions();
   }
 }
 
@@ -1003,9 +1095,9 @@ function handleGlobalClick(e) {
     const id = Number(action.dataset.id);
     if (action.dataset.action === 'cart') addToCart(id);
     if (action.dataset.action === 'wish') toggleWish(id);
-    if (action.dataset.action === 'increase-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty += 1; saveSessionState(); renderCart(); }
-    if (action.dataset.action === 'decrease-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty -= 1; state.cart = state.cart.filter((x) => x.qty > 0); saveSessionState(); renderCart(); }
-    if (action.dataset.action === 'remove-cart') { state.cart = state.cart.filter((x) => Number(x.id) !== id); saveSessionState(); renderCart(); }
+    if (action.dataset.action === 'increase-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty += 1; saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
+    if (action.dataset.action === 'decrease-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty -= 1; state.cart = state.cart.filter((x) => x.qty > 0); saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
+    if (action.dataset.action === 'remove-cart') { state.cart = state.cart.filter((x) => Number(x.id) !== id); saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
     if (action.dataset.action === 'wishlist-cart') {
       addToCart(id, { skipAuth: true });
       toggleWishlistMiniModal(true);
@@ -1139,32 +1231,12 @@ function setupAuthUi() {
         document.getElementById('checkoutComplement') && (document.getElementById('checkoutComplement').value = address.complemento || '');
       }
       state.shippingZipCode = cleanCep;
+      refreshCheckoutShippingOptions();
     } catch (_error) {
       showToast('CEP não encontrado para auto preenchimento.');
     }
   });
-  document.getElementById('checkoutCalcShippingBtn')?.addEventListener('click', async () => {
-    const cep = document.getElementById('checkoutCep')?.value || '';
-    if (sanitizeCep(cep).length !== 8) return showToast('CEP inválido. Informe 8 dígitos.');
-    const entries = getCartEntries();
-    const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
-    if (!subtotal) return showToast('Adicione itens ao carrinho antes de calcular o frete.');
-    const list = document.getElementById('checkoutShippingOptions');
-    if (!list) return;
-    list.innerHTML = '<small>Calculando frete...</small>';
-    try {
-      const result = await calculateShipping(cep, subtotal);
-      state.shippingOptions = result.opcoes || [];
-      state.shippingOption = state.shippingOptions[0] || null;
-      state.shippingOrigin = result.origem || null;
-      state.shippingZipCode = sanitizeCep(cep);
-      list.innerHTML = renderShippingOptions(result, { selectable: true, selectedId: state.shippingOption?.id || '' });
-      refreshShippingSelectionUi();
-      updateCartTotals();
-    } catch (_error) {
-      list.innerHTML = '<small>Não foi possível calcular o frete. Confira o CEP.</small>';
-    }
-  });
+  refreshCheckoutShippingOptions();
   document.getElementById('checkoutShippingOptions')?.addEventListener('change', (event) => {
     const optionId = event.target.value;
     state.shippingOption = state.shippingOptions.find((option) => option.id === optionId) || null;
@@ -1187,6 +1259,9 @@ function setupAuthUi() {
     if (!state.currentUser) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
     if (!state.cart.length) return showToast('Seu carrinho está vazio.');
     const { entries, subtotal, cashback, shipping, total } = computeCartPricing();
+    if (subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD && !state.shippingOption) {
+      return showToast('Selecione uma opção de entrega para continuar.');
+    }
     const address = getCheckoutAddress();
     const payload = {
       id_usuario: Number(state.currentUser?.id_usuario || state.currentUser?.id || 0),
