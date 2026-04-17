@@ -121,6 +121,11 @@ function normalizeProduct(p) {
     notaMedia: Number(p.notaMedia || p.media_avaliacao || p.avaliacaoMedia || 0),
     totalAvaliacoes: Number(p.totalAvaliacoes || p.total_avaliacoes || p.quantidadeAvaliacoes || 0),
     vendas: Number(p.vendas || 0),
+    pesoKg: Number(p.pesoKg || p.peso_kg || 0.3),
+    alturaCm: Number(p.alturaCm || p.altura_cm || 5),
+    larguraCm: Number(p.larguraCm || p.largura_cm || 20),
+    comprimentoCm: Number(p.comprimentoCm || p.comprimento_cm || 30),
+    origemCep: formatCep(p.origemCep || p.origem_cep || '01001-000'),
     source: p.source || 'catalog'
   };
 }
@@ -218,12 +223,29 @@ function renderCheckoutSummaryItems(entries) {
   `).join('');
 }
 
-async function calculateShipping(cep, subtotal) {
+function buildShippingItemsFromEntries(entries = []) {
+  return entries.map(({ product, qty }) => ({
+    sku: String(product.id),
+    pesoKg: Number(product.pesoKg || 0.3),
+    alturaCm: Number(product.alturaCm || 5),
+    larguraCm: Number(product.larguraCm || 20),
+    comprimentoCm: Number(product.comprimentoCm || 30),
+    quantidade: Number(qty || 1),
+    valorUnitario: Number(discountedPrice(product).toFixed(2)),
+  }));
+}
+
+async function calculateShipping(cep, subtotal, items = []) {
   const cleanCep = sanitizeCep(cep);
   if (cleanCep.length !== 8) throw new Error('CEP inválido');
+  if (!Array.isArray(items) || !items.length) throw new Error('Carrinho vazio para cálculo de frete');
   return apiRequest('/frete/calcular', {
     method: 'POST',
-    body: JSON.stringify({ cep: formatCep(cleanCep), subtotal: Number(subtotal || 0) }),
+    body: JSON.stringify({
+      cep: formatCep(cleanCep),
+      subtotal: Number(subtotal || 0),
+      itens: items,
+    }),
   });
 }
 
@@ -232,26 +254,25 @@ function renderShippingOptions(result, { selectable = false, selectedId = '', in
   if (!options.length) return '<small>Sem opções disponíveis para este CEP.</small>';
   return options.map((option, index) => {
     const selected = selectedId ? selectedId === option.id : index === 0;
+    const shippingLabel = option.freteAbsorvidoPelaLoja
+      ? `<small class="shipping-free-note">Frete grátis para você • loja absorve ${currency(option.valorOriginal || option.valor)}</small>`
+      : '';
     if (selectable) {
       return `
         <label class="shipping-option selectable ${option.destaque || ''} ${selected ? 'is-selected' : ''}">
           <input type="radio" name="${inputName}" value="${option.id}" ${selected ? 'checked' : ''}/>
-          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${formatShippingDeadline(option)} • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</div>
+          <div><strong>${option.transportadora ? `${option.transportadora} • ` : ''}${option.nome}</strong><span>${currency(option.valor)} • ${formatShippingDeadline(option)}</span>${shippingLabel}${result?.origem ? `<small>Origem: ${result.origem.cep}</small>` : ''}</div>
         </label>
       `;
     }
-    return `<article class="shipping-option ${option.destaque || ''}"><strong>${option.nome}</strong><span>${currency(option.valor)} • ${formatShippingDeadline(option)} • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</article>`;
+    return `<article class="shipping-option ${option.destaque || ''}"><strong>${option.transportadora ? `${option.transportadora} • ` : ''}${option.nome}</strong><span>${currency(option.valor)} • ${formatShippingDeadline(option)}</span>${shippingLabel}${result?.origem ? `<small>Origem: ${result.origem.cep}</small>` : ''}</article>`;
   }).join('');
 }
 
 async function fetchAddressByCep(cep) {
   const cleanCep = sanitizeCep(cep);
   if (cleanCep.length !== 8) throw new Error('CEP inválido');
-  const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-  if (!response.ok) throw new Error('Falha ao buscar CEP');
-  const data = await response.json();
-  if (data.erro) throw new Error('CEP não encontrado');
-  return data;
+  return apiRequest(`/frete/cep/${cleanCep}`);
 }
 
 async function loadProducts() {
@@ -484,22 +505,37 @@ async function renderProductPage() {
 
   document.getElementById('calcFreteBtn')?.addEventListener('click', async (e) => {
     e.preventDefault();
+    const button = document.getElementById('calcFreteBtn');
     const cep = (document.getElementById('freteCep').value || '').trim();
-    if (!cep) return showToast('Informe um CEP para calcular o frete.');
-    if (sanitizeCep(cep).length !== 8) return showToast('CEP inválido. Use o formato 00000-000.');
+    const cleanCep = sanitizeCep(cep);
+    if (!cleanCep) return showToast('Informe um CEP para calcular o frete.');
+    if (cleanCep.length !== 8) return showToast('CEP inválido. Use o formato 00000-000.');
     const resultEl = document.getElementById('freteResult');
-    resultEl.innerHTML = '<small>Calculando...</small>';
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Calculando...';
+    }
+    resultEl.innerHTML = '<small>Consultando endereço e frete real...</small>';
     try {
+      const shippingItems = [{
+        sku: String(p.id),
+        pesoKg: Number(p.pesoKg || 0.3),
+        alturaCm: Number(p.alturaCm || 5),
+        larguraCm: Number(p.larguraCm || 20),
+        comprimentoCm: Number(p.comprimentoCm || 30),
+        quantidade: 1,
+        valorUnitario: Number(discountedPrice(p).toFixed(2)),
+      }];
       const [address, result] = await Promise.all([
-        fetchAddressByCep(cep),
-        calculateShipping(cep, discountedPrice(p)),
+        fetchAddressByCep(cleanCep),
+        calculateShipping(cleanCep, discountedPrice(p), shippingItems),
       ]);
       const selectedOption = result?.opcoes?.[0] || null;
       resultEl.innerHTML = `
         <div class="shipping-address">
           <strong>Endereço do CEP</strong>
-          <span>${address.logradouro || 'Rua não informada'}</span>
-          <span>${address.bairro || 'Bairro não informado'} • ${address.localidade || ''}/${String(address.uf || '').toUpperCase()}</span>
+          <span>${address.rua || 'Rua não informada'}</span>
+          <span>${address.bairro || 'Bairro não informado'} • ${address.cidade || ''}/${String(address.estado || '').toUpperCase()}</span>
         </div>
         <div class="shipping-options-list">
           ${renderShippingOptions(result, { selectable: true, selectedId: selectedOption?.id || '', inputName: 'productShippingOption' })}
@@ -517,8 +553,13 @@ async function renderProductPage() {
           });
         });
       });
-    } catch (_e) {
-      resultEl.innerHTML = '<small>CEP inválido ou indisponível. Verifique e tente novamente.</small>';
+    } catch (error) {
+      resultEl.innerHTML = `<small>${error?.message || 'Não foi possível calcular o frete agora.'}</small>`;
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Calcular';
+      }
     }
   });
 
@@ -594,6 +635,44 @@ function getSellerAccountStatus() {
   };
 }
 
+
+function renderSellerInfoPanel() {
+  const root = document.getElementById('sellerInfoPanel');
+  if (!root) return;
+  root.innerHTML = `
+    <article class="seller-info-card">
+      <h3>Informações necessárias</h3>
+      <div class="seller-info-grid">
+        <section><h4>Como funciona</h4><ul><li>Você publica seus produtos no painel.</li><li>O cliente compra no site.</li><li>O pedido aparece para o vendedor.</li><li>Você prepara e envia no prazo.</li></ul></section>
+        <section><h4>Comissão da plataforma</h4><p>A plataforma retém <strong>8%</strong> por venda.</p><p>Exemplo: Produto R$ 100 • Comissão R$ 8 • Líquido R$ 92.</p></section>
+        <section><h4>Envio e responsabilidade</h4><p>O frete é calculado em tempo real. Mantenha peso e dimensões corretos para cotação precisa.</p></section>
+        <section><h4>Avaliações e reputação</h4><p>Clientes podem avaliar seu atendimento e isso impacta sua reputação.</p></section>
+        <section><h4>Regras da plataforma</h4><ul><li>Não anunciar itens ilegais, falsificados ou proibidos.</li><li>Respeitar prazos e qualidade de atendimento.</li><li>Manter dados verdadeiros no cadastro.</li></ul></section>
+        <section><h4>Banimento</h4><p>Com 15+ avaliações e média abaixo de 3.5, a conta é bloqueada e o CPF fica impedido para novas vendas.</p></section>
+      </div>
+      <div class="seller-profit-calc">
+        <h4>Calculadora de lucro</h4>
+        <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+          <div class="input-group"><label>Preço do produto</label><input type="number" id="sellerProfitPrice" min="0" step="0.01" value="100"/></div>
+          <div class="input-group"><label>Comissão (8%)</label><input type="text" id="sellerProfitFee" disabled /></div>
+          <div class="input-group"><label>Líquido estimado</label><input type="text" id="sellerProfitNet" disabled /></div>
+        </div>
+      </div>
+    </article>
+  `;
+
+  const updateProfit = () => {
+    const price = Number(document.getElementById('sellerProfitPrice')?.value || 0);
+    const fee = price * 0.08;
+    const net = price - fee;
+    document.getElementById('sellerProfitFee').value = currency(fee);
+    document.getElementById('sellerProfitNet').value = currency(net);
+  };
+
+  document.getElementById('sellerProfitPrice')?.addEventListener('input', updateProfit);
+  updateProfit();
+}
+
 function renderMyProductsPage() {
   const target = document.getElementById('myProductsGrid');
   if (!target) return;
@@ -607,7 +686,7 @@ function fillEditForm() {
   const id = Number(getQuery('id'));
   const p = getProductById(id);
   if (!p) return;
-  const map = { sellerProductName: p.nome, sellerProductDescription: p.descricao, sellerProductPrice: p.preco, sellerProductDiscount: p.desconto, sellerProductCategory: p.categoria, sellerProductGender: p.genero, sellerProductSport: p.modalidade, sellerProductBrand: p.marca, sellerProductCashback: p.cashback, sellerProductStock: p.estoque, sellerProductSizes: p.tamanhos.map((size) => size.disponivel ? size.label : `${size.label}:0`).join(','), sellerProductImage: p.imagem };
+  const map = { sellerProductName: p.nome, sellerProductDescription: p.descricao, sellerProductPrice: p.preco, sellerProductDiscount: p.desconto, sellerProductCategory: p.categoria, sellerProductGender: p.genero, sellerProductSport: p.modalidade, sellerProductBrand: p.marca, sellerProductCashback: p.cashback, sellerProductStock: p.estoque, sellerProductSizes: p.tamanhos.map((size) => size.disponivel ? size.label : `${size.label}:0`).join(','), sellerProductImage: p.imagem, sellerProductWeight: p.pesoKg, sellerProductHeight: p.alturaCm, sellerProductWidth: p.larguraCm, sellerProductLength: p.comprimentoCm, sellerProductOriginCep: p.origemCep };
   Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
   document.getElementById('sellerProductLaunch') && (document.getElementById('sellerProductLaunch').checked = p.badgeLancamento);
   document.getElementById('sellerProductPromotion') && (document.getElementById('sellerProductPromotion').checked = p.promocaoAtiva);
@@ -620,6 +699,9 @@ async function submitSellerProduct(event) {
   if (sellerStatus.blocked) return showToast(sellerStatus.reason || 'Conta de vendedor bloqueada para anunciar.');
   const isEdit = document.body.dataset.page === 'edit-product';
   const id = isEdit ? Number(getQuery('id')) : Date.now();
+
+  const originCep = formatCep(document.getElementById('sellerProductOriginCep').value || '');
+  if (sanitizeCep(originCep).length !== 8) return showToast('Informe um CEP de origem válido.');
 
   const payload = normalizeProduct({
     id,
@@ -640,6 +722,11 @@ async function submitSellerProduct(event) {
     vendedorId: state.currentUser.id_usuario,
     ativo: true,
     source: 'seller-local',
+    pesoKg: Number(document.getElementById('sellerProductWeight').value || 0.3),
+    alturaCm: Number(document.getElementById('sellerProductHeight').value || 5),
+    larguraCm: Number(document.getElementById('sellerProductWidth').value || 20),
+    comprimentoCm: Number(document.getElementById('sellerProductLength').value || 30),
+    origemCep: formatCep(document.getElementById('sellerProductOriginCep').value || '01001-000'),
     dataCriacao: new Date().toISOString()
   });
 
@@ -660,7 +747,12 @@ async function submitSellerProduct(event) {
     lancamento: payload.badgeLancamento,
     promocao_ativa: payload.promocaoAtiva,
     id_vendedor: payload.vendedorId,
-    ativo: payload.ativo
+    ativo: payload.ativo,
+    peso_kg: payload.pesoKg,
+    altura_cm: payload.alturaCm,
+    largura_cm: payload.larguraCm,
+    comprimento_cm: payload.comprimentoCm,
+    origem_cep: payload.origemCep
   };
 
   try {
@@ -790,14 +882,6 @@ async function refreshCheckoutShippingOptions() {
     return;
   }
 
-  if (freeShipping) {
-    state.shippingOptions = [];
-    state.shippingOption = { id: 'frete-gratis', nome: 'Frete grátis', tipo: 'gratis', valor: 0, prazoMin: 2, prazoMax: 7 };
-    list.innerHTML = '<article class="shipping-option shipping-free"><strong>🎉 Frete grátis liberado</strong><span>Pedidos a partir de R$ 400 recebem entrega sem custo.</span></article>';
-    updateCartTotals();
-    return;
-  }
-
   if (cleanCep.length !== 8) {
     state.shippingOption = null;
     state.shippingOptions = [];
@@ -806,10 +890,19 @@ async function refreshCheckoutShippingOptions() {
     return;
   }
 
+  const shippingItems = buildShippingItemsFromEntries(getCartEntries());
+  if (!shippingItems.length) {
+    state.shippingOption = null;
+    state.shippingOptions = [];
+    list.innerHTML = '<small>Adicione itens válidos ao carrinho para calcular o frete.</small>';
+    updateCartTotals();
+    return;
+  }
+
   const requestId = ++checkoutShippingRequestId;
-  list.innerHTML = '<small>Buscando opções de frete...</small>';
+  list.innerHTML = '<small>Buscando opções reais de frete...</small>';
   try {
-    const result = await calculateShipping(cleanCep, subtotal);
+    const result = await calculateShipping(cleanCep, subtotal, shippingItems);
     if (requestId !== checkoutShippingRequestId) return;
     state.shippingOptions = result.opcoes || [];
     const selected = state.shippingOptions.find((option) => option.id === state.shippingOption?.id);
@@ -821,8 +914,17 @@ async function refreshCheckoutShippingOptions() {
       selectedId: state.shippingOption?.id || '',
       inputName: 'checkoutShippingOption',
     });
+
+    if (freeShipping) {
+      const note = document.createElement('article');
+      note.className = 'shipping-option shipping-free';
+      note.innerHTML = '<strong>🎉 Frete grátis liberado</strong><span>A loja absorve o custo do frete nesta compra.</span>';
+      list.prepend(note);
+    }
+
     refreshShippingSelectionUi();
     updateCartTotals();
+    return;
   } catch (_error) {
     if (requestId !== checkoutShippingRequestId) return;
     state.shippingOption = null;
@@ -1001,7 +1103,16 @@ async function handleAuthSubmit(event) {
       } catch (_e) {
         const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
         if (users.some((u) => u.email === email)) throw new Error('E-mail já cadastrado.');
-        users.push({ id_usuario: Date.now(), name, email, password, type, cpf: type === 'vendedor' ? cpf : '', birthDate: type === 'vendedor' ? birthDate : '' });
+        if (type === 'vendedor') {
+          const normalizedCpf = sanitizeCpf(cpf);
+          if (users.some((u) => sanitizeCpf(u.cpf || '') === normalizedCpf)) {
+            throw new Error('CPF já cadastrado para outro vendedor.');
+          }
+          if (users.some((u) => sanitizeCpf(u.cpf || '') === normalizedCpf && u.cpfBloqueadoVenda)) {
+            throw new Error('CPF bloqueado para venda na plataforma.');
+          }
+        }
+        users.push({ id_usuario: Date.now(), name, email, password, type, cpf: type === 'vendedor' ? cpf : '', birthDate: type === 'vendedor' ? birthDate : '', cpfBloqueadoVenda: false });
         localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
       }
       setAuthFeedback(created ? 'Conta criada via API. Faça login.' : 'Conta criada localmente. Faça login.', 'success');
@@ -1203,6 +1314,9 @@ function setupAuthUi() {
   document.getElementById('authCpf')?.addEventListener('input', (event) => {
     event.target.value = formatCpf(event.target.value);
   });
+  document.getElementById('sellerProductOriginCep')?.addEventListener('input', (event) => {
+    event.target.value = formatCep(event.target.value);
+  });
 
   document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
   document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
@@ -1223,10 +1337,10 @@ function setupAuthUi() {
     if (cleanCep.length !== 8) return;
     try {
       const address = await fetchAddressByCep(cleanCep);
-      document.getElementById('checkoutStreet') && (document.getElementById('checkoutStreet').value = address.logradouro || '');
+      document.getElementById('checkoutStreet') && (document.getElementById('checkoutStreet').value = address.rua || '');
       document.getElementById('checkoutDistrict') && (document.getElementById('checkoutDistrict').value = address.bairro || '');
-      document.getElementById('checkoutCity') && (document.getElementById('checkoutCity').value = address.localidade || '');
-      document.getElementById('checkoutState') && (document.getElementById('checkoutState').value = String(address.uf || '').toUpperCase());
+      document.getElementById('checkoutCity') && (document.getElementById('checkoutCity').value = address.cidade || '');
+      document.getElementById('checkoutState') && (document.getElementById('checkoutState').value = String(address.estado || '').toUpperCase());
       if (!document.getElementById('checkoutComplement')?.value) {
         document.getElementById('checkoutComplement') && (document.getElementById('checkoutComplement').value = address.complemento || '');
       }
@@ -1263,26 +1377,29 @@ function setupAuthUi() {
       return showToast('Selecione uma opção de entrega para continuar.');
     }
     const address = getCheckoutAddress();
+    if (sanitizeCep(address.cep).length !== 8) return showToast('Informe um CEP válido para finalizar o pedido.');
+    if (!address.rua || !address.bairro || !address.cidade || !address.estado || !address.numero) {
+      return showToast('Preencha endereço completo para finalizar o pedido.');
+    }
+    const paymentMap = { credito: 'cartao', pix: 'pix', boleto: 'boleto' };
+    const selectedPayment = document.getElementById('paymentMethod')?.value || 'credito';
     const payload = {
       id_usuario: Number(state.currentUser?.id_usuario || state.currentUser?.id || 0),
       id_endereco: 1,
+      id_entrega_opcao: Number(state.shippingOption?.codigoServico || 0) || undefined,
       status: 'pendente',
-      forma_pagamento: document.getElementById('paymentMethod')?.value || 'credito',
+      forma_pagamento: paymentMap[selectedPayment] || 'cartao',
+      subtotal: Number(subtotal.toFixed(2)),
+      valor_frete: Number(shipping.toFixed(2)),
+      desconto: 0,
       total: Number(total.toFixed(2)),
-      resumo_checkout: {
-        subtotal: Number(subtotal.toFixed(2)),
-        frete: Number(shipping.toFixed(2)),
-        cashback: Number(cashback.toFixed(2)),
-        total: Number(total.toFixed(2)),
-      },
-      entrega: state.shippingOption ? {
-        modalidadeId: state.shippingOption.id,
-        modalidadeNome: state.shippingOption.nome,
-        prazoMin: state.shippingOption.prazoMin,
-        prazoMax: state.shippingOption.prazoMax,
-        valor: Number(state.shippingOption.valor || 0),
-        origem: state.shippingOrigin,
-      } : null,
+      frete_gratis: Boolean(subtotal >= FREE_SHIPPING_THRESHOLD),
+      origem_cep: state.shippingOrigin?.cep || '01001-000',
+      prazo_entrega_min_dias: Number(state.shippingOption?.prazoMin || 0),
+      prazo_entrega_max_dias: Number(state.shippingOption?.prazoMax || 0),
+      observacoes_entrega: state.shippingOption
+        ? `${state.shippingOption.transportadora || 'Transportadora'} | ${state.shippingOption.nome}`
+        : undefined,
       endereco_entrega: address,
       itens: entries.map(({ product, qty, selectedSize, selectedColor }) => ({
         id_produto: product.id,
@@ -1292,6 +1409,12 @@ function setupAuthUi() {
         tamanho: selectedSize,
         cor: selectedColor,
       })),
+      resumo_checkout: {
+        subtotal: Number(subtotal.toFixed(2)),
+        frete: Number(shipping.toFixed(2)),
+        cashback: Number(cashback.toFixed(2)),
+        total: Number(total.toFixed(2)),
+      },
     };
     try {
       await apiRequest('/pedidos', {
@@ -1357,6 +1480,7 @@ async function init() {
   if (page === 'my-products') renderMyProductsPage();
   if (page === 'seller' || page === 'edit-product') {
     document.getElementById('sellerProductForm')?.addEventListener('submit', submitSellerProduct);
+    if (page === 'seller') renderSellerInfoPanel();
     if (page === 'edit-product') fillEditForm();
   }
 }

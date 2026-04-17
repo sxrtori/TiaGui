@@ -2404,3 +2404,52 @@ textarea:focus {
     padding: 14px;
   }
 }
+
+.shipping-free-note {
+  color: #0d7a46;
+  font-weight: 600;
+}
+
+.shipping-option.melhor-preco {
+  border-color: rgba(13, 122, 70, 0.4);
+}
+
+.seller-info-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.seller-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.seller-info-grid section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.seller-info-grid h4 {
+  margin-bottom: 8px;
+}
+
+.seller-info-grid ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.seller-profit-calc {
+  margin-top: 14px;
+}
+
+@media (max-width: 768px) {
+  .seller-info-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,22 +1,70 @@
-import { IsInt, IsNumber, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
-export class CalcularFreteDto {
-  @Transform(({ value }) => String(value || '').replace(/\D/g, '').replace(/^(\d{5})(\d{3})$/, '$1-$2'))
-  @Matches(/^\d{5}-\d{3}$/, { message: 'CEP inválido' })
-  cep: string;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  subtotal?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  quantidadeItens?: number;
-
+export class CalcularFreteItemDto {
   @IsOptional()
   @IsString()
-  modalidade?: string;
+  sku?: string;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(30)
+  pesoKg: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(200)
+  alturaCm: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(200)
+  larguraCm: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(200)
+  comprimentoCm: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(1000)
+  quantidade: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  valorUnitario: number;
+}
+
+export class CalcularFreteDto {
+  @IsString()
+  @Matches(/^\d{5}-?\d{3}$/, { message: 'CEP inválido. Use 00000-000.' })
+  cep: string;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  subtotal: number;
+
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => CalcularFreteItemDto)
+  itens: CalcularFreteItemDto[];
 }

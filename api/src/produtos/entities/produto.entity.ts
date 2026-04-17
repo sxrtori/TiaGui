@@ -68,6 +68,22 @@ export class Produto {
   @Column({ type: 'int', default: 0 })
   total_avaliacoes: number;
 
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0.3 })
+  peso_kg: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 5 })
+  altura_cm: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 20 })
+  largura_cm: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 30 })
+  comprimento_cm: number;
+
+  @Column({ length: 10, default: '01001-000' })
+  origem_cep: string;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 }
