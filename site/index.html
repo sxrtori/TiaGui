@@ -535,9 +535,24 @@
               <input type="email" id="checkoutEmail" placeholder="voce@email.com" />
             </div>
 
+            <div class="input-group">
+              <label>CEP</label>
+              <input type="text" id="checkoutCep" placeholder="00000-000" maxlength="9" />
+            </div>
+
             <div class="input-group full">
-              <label>Endereço</label>
-              <input type="text" id="checkoutAddress" placeholder="Rua, número e bairro" />
+              <label>Rua</label>
+              <input type="text" id="checkoutStreet" placeholder="Rua / Avenida" />
+            </div>
+
+            <div class="input-group">
+              <label>Número</label>
+              <input type="text" id="checkoutNumber" placeholder="123" />
+            </div>
+
+            <div class="input-group">
+              <label>Bairro</label>
+              <input type="text" id="checkoutDistrict" placeholder="Seu bairro" />
             </div>
 
             <div class="input-group">
@@ -546,8 +561,21 @@
             </div>
 
             <div class="input-group">
-              <label>CEP</label>
-              <input type="text" id="checkoutCep" placeholder="00000-000" />
+              <label>Estado</label>
+              <input type="text" id="checkoutState" placeholder="UF" maxlength="2" />
+            </div>
+
+            <div class="input-group full">
+              <label>Complemento</label>
+              <input type="text" id="checkoutComplement" placeholder="Apartamento, bloco, referência..." />
+            </div>
+
+            <div class="input-group full">
+              <label>Entrega</label>
+              <div class="frete-form checkout-shipping-form">
+                <button class="btn btn-light" type="button" id="checkoutCalcShippingBtn">Calcular frete</button>
+              </div>
+              <div id="checkoutShippingOptions" class="shipping-options-list"></div>
             </div>
 
             <div class="input-group">
