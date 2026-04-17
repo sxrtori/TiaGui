@@ -163,13 +163,15 @@
           </div>
 
           <div class="carousel-controls">
-            <button class="icon-btn" onclick="scrollCarousel(-1)">←</button>
-            <button class="icon-btn" onclick="scrollCarousel(1)">→</button>
+            <button class="icon-btn" onclick="scrollSection('launchCarousel', -1)">←</button>
+            <button class="icon-btn" onclick="scrollSection('launchCarousel', 1)">→</button>
           </div>
         </div>
 
-        <div class="carousel-wrap">
-          <div class="carousel" id="launchCarousel"></div>
+        <div class="products-carousel-wrapper">
+          <button class="products-arrow" onclick="scrollSection('launchCarousel', -1)">←</button>
+          <div class="products-carousel" id="launchCarousel"></div>
+          <button class="products-arrow" onclick="scrollSection('launchCarousel', 1)">→</button>
         </div>
       </div>
     </section>
@@ -236,57 +238,80 @@
         </div>
 
         <div class="products-carousel-wrapper">
-          <button class="icon-btn products-arrow left" id="productsPrevBtn" aria-label="Voltar produtos">←</button>
+          <button class="products-arrow left" onclick="scrollSection('productsGrid', -1)" aria-label="Voltar produtos">←</button>
           <div class="products-grid products-carousel" id="productsGrid"></div>
-          <button class="icon-btn products-arrow right" id="productsNextBtn" aria-label="Avançar produtos">→</button>
+          <button class="products-arrow right" onclick="scrollSection('productsGrid', 1)" aria-label="Avançar produtos">→</button>
         </div>
       </div>
     </section>
 
     <section class="section section-light" id="newlyPublished">
       <div class="container">
-        <div class="section-head"><div><div class="eyebrow">Novos itens</div><h2>Produtos recém-publicados</h2></div></div>
-        <div class="products-grid" id="recentProductsGrid"></div>
+        <div class="section-head">
+          <h2>Produtos recém-publicados</h2>
+        </div>
+
+        <div class="products-carousel-wrapper">
+          <button class="products-arrow" onclick="scrollSection('recentProductsGrid', -1)">←</button>
+          <div class="products-carousel" id="recentProductsGrid"></div>
+          <button class="products-arrow" onclick="scrollSection('recentProductsGrid', 1)">→</button>
+        </div>
       </div>
     </section>
 
     <section class="section" id="bestRatedSection">
       <div class="container">
-        <div class="section-head"><div><div class="eyebrow">Prova social</div><h2>Mais bem avaliados</h2></div></div>
-        <div class="products-grid" id="bestRatedGrid"></div>
+        <div class="section-head">
+          <h2>Mais bem avaliados</h2>
+        </div>
+
+        <div class="products-carousel-wrapper">
+          <button class="products-arrow" onclick="scrollSection('bestRatedGrid', -1)">←</button>
+          <div class="products-carousel" id="bestRatedGrid"></div>
+          <button class="products-arrow" onclick="scrollSection('bestRatedGrid', 1)">→</button>
+        </div>
       </div>
     </section>
 
     <section class="section section-light" id="offersOfDay">
       <div class="container">
-        <div class="section-head"><div><div class="eyebrow">Descontos ativos</div><h2>Ofertas do dia</h2></div></div>
-        <div class="products-grid" id="offersGrid"></div>
+        <div class="section-head">
+          <h2>Ofertas do dia</h2>
+        </div>
+
+        <div class="products-carousel-wrapper">
+          <button class="products-arrow" onclick="scrollSection('offersGrid', -1)">←</button>
+          <div class="products-carousel" id="offersGrid"></div>
+          <button class="products-arrow" onclick="scrollSection('offersGrid', 1)">→</button>
+        </div>
       </div>
     </section>
 
-    <section class="section section-light" id="featuredBestSellers">
+    <section class="section" id="featuredBestSellers">
       <div class="container">
         <div class="section-head">
-          <div>
-            <div class="eyebrow">Baseado em vendas</div>
-            <h2>Produtos mais vendidos</h2>
-            <p class="lead">Atualizado automaticamente com os itens mais comprados.</p>
-          </div>
+          <h2>Produtos mais vendidos</h2>
         </div>
-        <div class="products-grid" id="bestSellersGrid"></div>
+
+        <div class="products-carousel-wrapper">
+          <button class="products-arrow" onclick="scrollSection('bestSellersGrid', -1)">←</button>
+          <div class="products-carousel" id="bestSellersGrid"></div>
+          <button class="products-arrow" onclick="scrollSection('bestSellersGrid', 1)">→</button>
+        </div>
       </div>
     </section>
 
     <section class="section" id="monthlyPromotions">
       <div class="container">
         <div class="section-head">
-          <div>
-            <div class="eyebrow">Ofertas do mês</div>
-            <h2>Promoções mensais</h2>
-            <p class="lead" id="monthlyPromotionLabel">Seleção promocional renovada todo mês.</p>
-          </div>
+          <h2>Promoções mensais</h2>
         </div>
-        <div class="products-grid" id="monthlyPromotionsGrid"></div>
+
+        <div class="products-carousel-wrapper">
+          <button class="products-arrow" onclick="scrollSection('monthlyPromotionsGrid', -1)">←</button>
+          <div class="products-carousel" id="monthlyPromotionsGrid"></div>
+          <button class="products-arrow" onclick="scrollSection('monthlyPromotionsGrid', 1)">→</button>
+        </div>
       </div>
     </section>
 
@@ -566,8 +591,6 @@
     </div>
   </div>
 
-
-
   <div class="product-modal" id="productModal">
     <div class="product-modal-panel">
       <div class="drawer-head checkout-top">
@@ -659,8 +682,8 @@
           <h4>Navegação</h4>
           <a href="#categorias">Categorias</a>
           <a href="#lancamentos">Lançamentos</a>
-        <a href="promocoes.html">Promoções</a>
-        <a href="meus-produtos.html">Meus produtos</a>
+          <a href="promocoes.html">Promoções</a>
+          <a href="meus-produtos.html">Meus produtos</a>
           <a href="#kits">Kits</a>
           <a href="#gift-card">Gift Card</a>
         </div>

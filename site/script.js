@@ -739,3 +739,14 @@ window.toggleWish = toggleWish;
 window.toggleCart = toggleCart;
 window.toggleWishlist = toggleWishlist;
 window.toggleCheckout = toggleCheckout;
+function scrollSection(id, direction) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  el.scrollBy({
+    left: direction * 320,
+    behavior: 'smooth'
+  });
+}
+
+window.scrollSection = scrollSection;
