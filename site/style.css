@@ -1510,3 +1510,8 @@ textarea {
   border: 1px solid #ddd;
   width: 100%;
 }
+
+.gender-option.active {
+  background: #111;
+  color: #fff;
+}

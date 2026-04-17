@@ -120,31 +120,31 @@
         </div>
 
         <div class="categories">
-          <a class="category-card" href="#produtos" data-filter="Masculino" data-folder="/masculino">
+          <a class="category-card" href="category.html?categoria=Masculino" data-filter="Masculino" data-folder="/masculino">
             <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1200&q=80" alt="Categoria masculino" />
             <div class="overlay"></div>
             <div class="content"><h3>Masculino</h3><span>Performance e estilo</span></div>
           </a>
 
-          <a class="category-card" href="#produtos" data-filter="Feminino" data-folder="/feminino">
+          <a class="category-card" href="category.html?categoria=Feminino" data-filter="Feminino" data-folder="/feminino">
             <img src="https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80" alt="Categoria feminino" />
             <div class="overlay"></div>
             <div class="content"><h3>Feminino</h3><span>Conforto e atitude</span></div>
           </a>
 
-          <a class="category-card" href="#produtos" data-filter="Calçados" data-folder="/sapatos">
+          <a class="category-card" href="category.html?categoria=Cal%C3%A7ados" data-filter="Calçados" data-folder="/sapatos">
             <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1200&q=80" alt="Categoria calçados" />
             <div class="overlay"></div>
             <div class="content"><h3>Calçados</h3><span>Impacto e estabilidade</span></div>
           </a>
 
-          <a class="category-card" href="#produtos" data-filter="Acessórios" data-folder="/acessorios">
+          <a class="category-card" href="category.html?categoria=Acess%C3%B3rios" data-filter="Acessórios" data-folder="/acessorios">
             <img src="https://images.unsplash.com/photo-1517344368193-41552b6ad3f5?auto=format&fit=crop&w=1200&q=80" alt="Categoria acessórios" />
             <div class="overlay"></div>
             <div class="content"><h3>Acessórios</h3><span>Detalhes que completam</span></div>
           </a>
 
-          <a class="category-card" href="#produtos" data-filter="Esportes" data-folder="/esportes">
+          <a class="category-card" href="category.html?categoria=Esportes" data-filter="Esportes" data-folder="/esportes">
             <img src="https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1200&q=80" alt="Categoria esportes" />
             <div class="overlay"></div>
             <div class="content"><h3>Esportes</h3><span>Corrida, academia, futebol e mais</span></div>
@@ -231,6 +231,32 @@
           <div class="products-grid products-carousel" id="productsGrid"></div>
           <button class="icon-btn products-arrow right" id="productsNextBtn" aria-label="Avançar produtos">→</button>
         </div>
+      </div>
+    </section>
+
+    <section class="section section-light" id="featuredBestSellers">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Baseado em vendas</div>
+            <h2>Produtos mais vendidos</h2>
+            <p class="lead">Atualizado automaticamente com os itens mais comprados.</p>
+          </div>
+        </div>
+        <div class="products-grid" id="bestSellersGrid"></div>
+      </div>
+    </section>
+
+    <section class="section" id="monthlyPromotions">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Ofertas do mês</div>
+            <h2>Promoções mensais</h2>
+            <p class="lead" id="monthlyPromotionLabel">Seleção promocional renovada todo mês.</p>
+          </div>
+        </div>
+        <div class="products-grid" id="monthlyPromotionsGrid"></div>
       </div>
     </section>
 
