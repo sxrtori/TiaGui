@@ -948,7 +948,7 @@ textarea {
 }
 
 .kit-card img {
-  height: 230px;
+  height: 210px;
   width: 100%;
   object-fit: cover;
 }
@@ -2065,23 +2065,38 @@ textarea:focus {
 
 .size-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(52px, 52px));
   gap: 10px;
-  max-width: 360px;
+  max-width: 380px;
 }
 
 .size-btn {
-  border: 1px solid #cecece;
+  border: 1px solid #cfcfcf;
   border-radius: 8px;
-  min-height: 42px;
+  min-height: 52px;
+  min-width: 52px;
   background: #fff;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.size-btn:hover:not(:disabled) {
+  border-color: #111;
 }
 
 .size-btn.active {
   border-color: var(--black);
   background: #0f0f0f;
   color: #fff;
+}
+
+.size-btn:disabled {
+  cursor: not-allowed;
+  color: #a3a3a3;
+  background: #f5f5f5;
+  border-style: dashed;
+  text-decoration: line-through;
 }
 
 .benefits-list {
@@ -2101,6 +2116,47 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+.shipping-option.selectable {
+  cursor: pointer;
+  align-items: center;
+}
+
+.shipping-option.selectable input {
+  margin-top: 3px;
+}
+
+.shipping-options-list {
+  margin-top: 10px;
+}
+
+.checkout-shipping-form {
+  justify-content: flex-start;
+}
+
+.related-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.related-head small {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6c6c6c;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
+.related-carousel {
+  grid-auto-columns: minmax(220px, 240px);
+}
+
+.related-carousel .product-card {
+  min-width: 220px;
+  max-width: 240px;
 }
 
 .shipping-option.mais-rapida {

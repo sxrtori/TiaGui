@@ -21,7 +21,34 @@ const DEFAULT_PRODUCTS = [
   { id: 3, nome: 'Puma Camisa Dry Power', descricao: 'Camisa dry fit para treinos.', preco: 129.9, imagem: 'https://images.puma.com/image/upload/f_auto,q_auto,w_600,b_rgb:FAFAFA/global/526718/51/mod01/fnd/BRA/fmt/png', categoria: 'Masculino', genero: 'Masculino', tamanhos: 'P,M,G,GG', modalidade: 'Academia', estoque: 30, marca: 'Puma', cashback: 3, desconto: 0, badgeLancamento: false, promocaoAtiva: false, vendedorId: 1, notaMedia: 4.7, totalAvaliacoes: 8, dataCriacao: '2026-03-18T10:00:00.000Z', vendas: 11 }
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null };
+const DEFAULT_KITS = [
+  {
+    id: 'kit-corrida-1',
+    nome: 'Kit Corrida Pro',
+    descricao: 'Tênis + meia de compressão + camiseta dry fit.',
+    imagem: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=80',
+    preco: 629.9,
+    itens: ['Tênis Running', 'Meia Compressão', 'Camiseta Dry'],
+  },
+  {
+    id: 'kit-academia-1',
+    nome: 'Kit Treino Academia',
+    descricao: 'Legging, top e luva para treino funcional.',
+    imagem: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=900&q=80',
+    preco: 359.9,
+    itens: ['Legging', 'Top esportivo', 'Luva Fitness'],
+  },
+  {
+    id: 'kit-futebol-1',
+    nome: 'Kit Futebol Performance',
+    descricao: 'Camisa, short e meião para jogo.',
+    imagem: 'https://images.unsplash.com/photo-1526232761682-d26e03ac148e?auto=format&fit=crop&w=900&q=80',
+    preco: 299.9,
+    itens: ['Camisa', 'Short', 'Meião'],
+  },
+];
+
+const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [] };
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -48,7 +75,22 @@ async function apiRequest(path, options = {}) {
 }
 
 function normalizeProduct(p) {
-  const fallbackSizes = String(p.tamanhos || p.numeracao || 'Único').split(',').map((size) => size.trim()).filter(Boolean);
+  const rawSizes = Array.isArray(p.tamanhos)
+    ? p.tamanhos
+    : String(p.tamanhos || p.numeracao || 'Único').split(',').map((size) => size.trim()).filter(Boolean);
+  const parsedSizes = rawSizes.map((item) => {
+    if (typeof item === 'object' && item !== null) {
+      return {
+        label: String(item.label || item.nome || item.size || 'Único'),
+        disponivel: item.disponivel !== false && item.available !== false,
+      };
+    }
+    const [label, rawAvailability] = String(item).split(':').map((part) => part.trim());
+    return {
+      label: label || String(item),
+      disponivel: rawAvailability !== '0' && rawAvailability !== 'false',
+    };
+  });
   const firstImage = p.imagem || 'https://via.placeholder.com/600x600?text=SportX';
   const galeria = p.galeria_imagens ? String(p.galeria_imagens).split(',').map((i) => i.trim()).filter(Boolean) : [firstImage].filter(Boolean);
   const cores = Array.isArray(p.cores) ? p.cores : [{ nome: p.cor || 'Padrão', hex: p.corHex || '#c7c7c7', imagens: [firstImage, ...galeria].slice(0, 5) }];
@@ -65,7 +107,7 @@ function normalizeProduct(p) {
     cores,
     categoria: p.categoria || CATEGORY_BY_ID[p.id_categoria] || 'Esportes',
     genero: p.genero || 'Unissex',
-    tamanhos: fallbackSizes,
+    tamanhos: parsedSizes,
     marca: p.marca || 'SportX',
     estoque: Number(p.estoque || 0),
     cashback: Number(p.cashback || 0),
@@ -80,6 +122,25 @@ function normalizeProduct(p) {
     vendas: Number(p.vendas || 0),
     source: p.source || 'catalog'
   };
+}
+
+function sanitizeCep(value = '') {
+  return String(value).replace(/\D/g, '').slice(0, 8);
+}
+
+function formatCep(value = '') {
+  const digits = sanitizeCep(value);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
+async function calculateShipping(cep, subtotal) {
+  const cleanCep = sanitizeCep(cep);
+  if (cleanCep.length !== 8) throw new Error('CEP inválido');
+  return apiRequest('/frete/calcular', {
+    method: 'POST',
+    body: JSON.stringify({ cep: formatCep(cleanCep), subtotal: Number(subtotal || 0) }),
+  });
 }
 
 async function loadProducts() {
@@ -145,6 +206,38 @@ function renderHome() {
   renderGrid('offersGrid', promotions);
   renderGrid('monthlyPromotionsGrid', promotions);
   renderGrid('launchCarousel', state.products.filter((p) => p.badgeLancamento).slice(0, 8));
+  renderKits();
+}
+
+function renderKits() {
+  const target = document.getElementById('kitsGrid');
+  if (!target) return;
+  const catalogKits = state.products
+    .filter((product) => /kit/i.test(product.categoria) || /kit/i.test(product.nome))
+    .slice(0, 4)
+    .map((product) => ({
+      id: product.id,
+      nome: product.nome,
+      descricao: product.descricao || 'Kit esportivo',
+      imagem: product.imagem,
+      preco: discountedPrice(product),
+      itens: [product.modalidade || 'Treino', product.marca || 'SportX', product.genero || 'Unissex'],
+    }));
+  const kits = catalogKits.length ? catalogKits : DEFAULT_KITS;
+  target.innerHTML = kits.map((kit) => `
+    <article class="kit-card">
+      <img src="${kit.imagem}" alt="${kit.nome}" loading="lazy" />
+      <div class="kit-body">
+        <h3>${kit.nome}</h3>
+        <p>${kit.descricao}</p>
+        <div class="kit-items">${kit.itens.map((item) => `<span class="pill">${item}</span>`).join('')}</div>
+        <div class="product-meta">
+          <div class="price-wrap"><strong>${currency(kit.preco)}</strong></div>
+          <button class="btn-card btn-dark" data-kit-add="${kit.id}">Adicionar</button>
+        </div>
+      </div>
+    </article>
+  `).join('');
 }
 
 function renderCategoryPage() {
@@ -178,7 +271,7 @@ async function renderProductPage() {
   const buyTogether = state.products.filter((x) => x.id !== p.id).slice(0, 3);
 
   const selectedColor = p.cores[0] || { nome: 'Padrão', hex: '#ccc', imagens: [p.imagem] };
-  const selectedSize = p.tamanhos[0] || 'Único';
+  const selectedSize = p.tamanhos.find((size) => size.disponivel)?.label || p.tamanhos[0]?.label || 'Único';
 
   root.innerHTML = `
     <nav class="breadcrumb"> <a href="index.html">Página Inicial</a> / <a href="categoria.html?categoria=${encodeURIComponent(p.genero)}">${p.genero}</a> / <a href="categoria.html?categoria=${encodeURIComponent(p.categoria)}">${p.categoria}</a> / <span>${p.nome}</span> </nav>
@@ -200,7 +293,7 @@ async function renderProductPage() {
 
         <div class="variation-block">
           <p class="variation-title">Tamanho</p>
-          <div class="size-grid" id="sizeGrid">${p.tamanhos.map((size, idx) => `<button class="size-btn ${idx === 0 ? 'active' : ''}" data-size="${size}">${size}</button>`).join('')}</div>
+          <div class="size-grid" id="sizeGrid">${p.tamanhos.map((size, idx) => `<button class="size-btn ${idx === 0 && size.disponivel ? 'active' : ''}" ${size.disponivel ? '' : 'disabled'} data-size="${size.label}">${size.label}</button>`).join('')}</div>
         </div>
 
         <div class="product-actions-row"><button class="btn btn-primary" id="addToCartProductBtn" data-id="${p.id}">Adicionar ao carrinho</button><button class="btn btn-light" data-action="wish" data-id="${p.id}">Favoritar</button></div>
@@ -214,15 +307,15 @@ async function renderProductPage() {
           <div>⭐ Frete grátis acima de ${currency(FREE_SHIPPING_THRESHOLD)}</div>
         </div>
 
-        <div class="frete-box"><label>Calcular frete</label><div class="frete-form"><input id="freteCep" placeholder="Digite o CEP"/><button id="calcFreteBtn" class="btn btn-light">Calcular</button></div><div id="freteResult"></div></div>
+        <div class="frete-box"><label>Calcular frete</label><div class="frete-form"><input id="freteCep" placeholder="Digite o CEP" maxlength="9"/><button id="calcFreteBtn" class="btn btn-light">Calcular</button></div><div id="freteResult"></div></div>
       </div>
     </section>
     <section class="section"><h3>Descrição detalhada</h3><p>${p.descricao}</p></section>
     <section class="section"><h3>Avaliações dos compradores</h3><div id="reviewList">${reviews.length ? reviews.map((r) => `<article class="review-item"><header><strong>${r.usuario}</strong><span>⭐ ${r.nota}</span></header><p>${r.comentario}</p><small>${new Date(r.data_criacao || r.data || Date.now()).toLocaleDateString('pt-BR')}</small><button class="btn-link" data-report-review="${r.id_avaliacao || ''}">Denunciar</button></article>`).join('') : '<p>Ainda sem avaliações.</p>'}</div>
       <form id="reviewForm" class="seller-form-pro"><div class="input-group"><label>Nota</label><select id="reviewRate" required><option value="">Selecione</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></div><div class="input-group"><label>Comentário</label><textarea id="reviewText" required></textarea></div><button class="btn btn-primary" type="submit">Enviar avaliação</button></form>
     </section>
-    <section class="section"><h3>Produtos relacionados</h3><div class="products-grid">${related.map(renderProductCard).join('')}</div></section>
-    <section class="section"><h3>Compre junto</h3><div class="products-grid">${buyTogether.map(renderProductCard).join('')}</div></section>
+    <section class="section"><div class="related-head"><small>Complete seu look</small><h3>Você também poderá gostar</h3></div><div class="products-carousel related-carousel">${related.map(renderProductCard).join('')}</div></section>
+    <section class="section"><h3>Compre junto</h3><div class="products-carousel related-carousel">${buyTogether.map(renderProductCard).join('')}</div></section>
   `;
 
   let currentColorIndex = 0;
@@ -245,6 +338,7 @@ async function renderProductPage() {
   }));
 
   document.querySelectorAll('.size-btn').forEach((btn) => btn.addEventListener('click', () => {
+    if (btn.disabled) return;
     currentSize = btn.dataset.size;
     document.querySelectorAll('.size-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
@@ -257,6 +351,10 @@ async function renderProductPage() {
     addToCart(p.id, { selectedSize: currentSize, selectedColor: color.nome, selectedColorHex: color.hex, skipAuth: false });
   });
 
+  document.getElementById('freteCep')?.addEventListener('input', (event) => {
+    event.target.value = formatCep(event.target.value);
+  });
+
   document.getElementById('calcFreteBtn')?.addEventListener('click', async (e) => {
     e.preventDefault();
     const cep = (document.getElementById('freteCep').value || '').trim();
@@ -264,11 +362,11 @@ async function renderProductPage() {
     const resultEl = document.getElementById('freteResult');
     resultEl.innerHTML = '<small>Calculando...</small>';
     try {
-      const result = await apiRequest('/frete/calcular', { method: 'POST', body: JSON.stringify({ cep, subtotal: discountedPrice(p) }) });
+      const result = await calculateShipping(cep, discountedPrice(p));
       const options = result.opcoes || [];
       resultEl.innerHTML = options.map((op) => `<article class="shipping-option ${op.destaque || ''}"><strong>${op.nome}</strong><span>${currency(op.valor)} • ${op.prazoMin} a ${op.prazoMax} dias úteis</span></article>`).join('');
     } catch (_e) {
-      resultEl.innerHTML = '<small>Não foi possível calcular agora. Tente novamente.</small>';
+      resultEl.innerHTML = '<small>CEP inválido ou indisponível. Verifique e tente novamente.</small>';
     }
   });
 
@@ -321,7 +419,7 @@ function fillEditForm() {
   const id = Number(getQuery('id'));
   const p = getProductById(id);
   if (!p) return;
-  const map = { sellerProductName: p.nome, sellerProductDescription: p.descricao, sellerProductPrice: p.preco, sellerProductDiscount: p.desconto, sellerProductCategory: p.categoria, sellerProductGender: p.genero, sellerProductSport: p.modalidade, sellerProductBrand: p.marca, sellerProductCashback: p.cashback, sellerProductStock: p.estoque, sellerProductSizes: p.tamanhos, sellerProductImage: p.imagem };
+  const map = { sellerProductName: p.nome, sellerProductDescription: p.descricao, sellerProductPrice: p.preco, sellerProductDiscount: p.desconto, sellerProductCategory: p.categoria, sellerProductGender: p.genero, sellerProductSport: p.modalidade, sellerProductBrand: p.marca, sellerProductCashback: p.cashback, sellerProductStock: p.estoque, sellerProductSizes: p.tamanhos.map((size) => size.disponivel ? size.label : `${size.label}:0`).join(','), sellerProductImage: p.imagem };
   Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
   document.getElementById('sellerProductLaunch') && (document.getElementById('sellerProductLaunch').checked = p.badgeLancamento);
   document.getElementById('sellerProductPromotion') && (document.getElementById('sellerProductPromotion').checked = p.promocaoAtiva);
@@ -364,7 +462,7 @@ async function submitSellerProduct(event) {
     estoque: payload.estoque,
     imagem: payload.imagem,
     genero: payload.genero,
-    numeracao: payload.tamanhos,
+    numeracao: payload.tamanhos.map((size) => size.disponivel ? size.label : `${size.label}:0`).join(','),
     marca: payload.marca,
     desconto: payload.desconto,
     cashback: payload.cashback,
@@ -454,7 +552,8 @@ function getCartEntries() {
 function updateCartTotals() {
   const entries = getCartEntries();
   const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : 24.9;
+  const selectedShippingValue = Number(state.shippingOption?.valor ?? NaN);
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : (Number.isNaN(selectedShippingValue) ? 24.9 : selectedShippingValue);
   const cashback = entries.reduce((sum, { product, qty }) => sum + ((discountedPrice(product) * qty) * Number(product.cashback || 0) / 100), 0);
   const subtotalEl = document.getElementById('cartSubtotal');
   const totalEl = document.getElementById('cartTotal');
@@ -691,6 +790,13 @@ function handleGlobalClick(e) {
   }
   const card = e.target.closest('[data-product-link]');
   if (card && !e.target.closest('button,a')) window.location.href = `produto.html?id=${card.dataset.productLink}`;
+  const kit = e.target.closest('[data-kit-add]');
+  if (kit) {
+    const kitId = kit.dataset.kitAdd;
+    const productKit = state.products.find((product) => String(product.id) === String(kitId));
+    if (productKit) addToCart(productKit.id);
+    else showToast('Kit adicionado à lista de interesse.');
+  }
 }
 
 async function quickUpdateProduct(id, transformer) {
@@ -767,6 +873,37 @@ function setupAuthUi() {
   document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
   document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
   document.getElementById('checkoutOpenBtn')?.addEventListener('click', () => ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra'));
+  document.getElementById('checkoutCep')?.addEventListener('input', (event) => {
+    event.target.value = formatCep(event.target.value);
+  });
+  document.getElementById('checkoutCalcShippingBtn')?.addEventListener('click', async () => {
+    const cep = document.getElementById('checkoutCep')?.value || '';
+    const entries = getCartEntries();
+    const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
+    if (!subtotal) return showToast('Adicione itens ao carrinho antes de calcular o frete.');
+    const list = document.getElementById('checkoutShippingOptions');
+    if (!list) return;
+    list.innerHTML = '<small>Calculando frete...</small>';
+    try {
+      const result = await calculateShipping(cep, subtotal);
+      state.shippingOptions = result.opcoes || [];
+      state.shippingOption = state.shippingOptions[0] || null;
+      list.innerHTML = state.shippingOptions.map((option, index) => `
+        <label class="shipping-option selectable ${option.destaque || ''}">
+          <input type="radio" name="checkoutShippingOption" value="${option.id}" ${index === 0 ? 'checked' : ''}/>
+          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis</span></div>
+        </label>
+      `).join('');
+      updateCartTotals();
+    } catch (_error) {
+      list.innerHTML = '<small>Não foi possível calcular o frete. Confira o CEP.</small>';
+    }
+  });
+  document.getElementById('checkoutShippingOptions')?.addEventListener('change', (event) => {
+    const optionId = event.target.value;
+    state.shippingOption = state.shippingOptions.find((option) => option.id === optionId) || null;
+    updateCartTotals();
+  });
   document.getElementById('finishOrderBtn')?.addEventListener('click', () => {
     if (!state.currentUser) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
     if (!state.cart.length) return showToast('Seu carrinho está vazio.');
