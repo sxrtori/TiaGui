@@ -26,8 +26,32 @@
           <input type="number" id="sellerProductPrice" min="0" step="0.01" required />
         </div>
         <div class="input-group">
-          <label>Imagem (URL)</label>
-          <input type="url" id="sellerProductImage" required />
+          <label>Categoria</label>
+          <select id="sellerProductCategory" required>
+            <option value="Masculino">Masculino</option>
+            <option value="Feminino">Feminino</option>
+            <option value="Calçados">Calçados</option>
+            <option value="Acessórios">Acessórios</option>
+            <option value="Esportes">Esportes</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>Gênero</label>
+          <select id="sellerProductGender" required>
+            <option value="Unissex">Unissex</option>
+            <option value="Masculino">Masculino</option>
+            <option value="Feminino">Feminino</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>Tamanhos/numerações (separe por vírgula)</label>
+          <input type="text" id="sellerProductSizes" placeholder="Ex.: 38,39,40 ou P,M,G" required />
+        </div>
+        <div class="input-group">
+          <label>Imagem (arquivo ou URL)</label>
+          <input type="file" id="sellerProductImageFile" accept="image/*" />
+          <small style="color:#666;margin:6px 0;display:block;">Se preferir, informe URL da imagem:</small>
+          <input type="url" id="sellerProductImage" />
         </div>
         <div class="input-group">
           <label>Estoque</label>

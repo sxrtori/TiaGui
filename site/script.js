@@ -283,6 +283,10 @@ let allProducts = [];
 let currentUser = JSON.parse(localStorage.getItem('sportx-current-user') || sessionStorage.getItem('sportx-current-user') || 'null');
 let users = [];
 let rememberSession = true;
+let authToken = localStorage.getItem('sportx-token') || sessionStorage.getItem('sportx-token') || '';
+let productSales = JSON.parse(localStorage.getItem('sportx-product-sales') || '{}');
+let productReviews = JSON.parse(localStorage.getItem('sportx-product-reviews') || '{}');
+let selectedVariants = {};
 
 const currency = (value) =>
   value.toLocaleString('pt-BR', {
@@ -333,21 +337,28 @@ function loadState() {
 function saveUsers() {
   if (rememberSession) {
     localStorage.setItem('sportx-current-user', JSON.stringify(currentUser));
+    if (authToken) localStorage.setItem('sportx-token', authToken);
     sessionStorage.removeItem('sportx-current-user');
+    sessionStorage.removeItem('sportx-token');
   } else {
     sessionStorage.setItem('sportx-current-user', JSON.stringify(currentUser));
+    if (authToken) sessionStorage.setItem('sportx-token', authToken);
     localStorage.removeItem('sportx-current-user');
+    localStorage.removeItem('sportx-token');
   }
 }
 
 function clearSessionStorage() {
   localStorage.removeItem('sportx-current-user');
   sessionStorage.removeItem('sportx-current-user');
+  localStorage.removeItem('sportx-token');
+  sessionStorage.removeItem('sportx-token');
 }
 
 async function apiRequest(path, options = {}) {
+  const tokenHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...tokenHeader, ...(options.headers || {}) },
     ...options
   });
 
@@ -367,8 +378,8 @@ async function loadProductsFromApi(searchTerm = '') {
       allProducts = dbProducts.map((product) => ({
         id: product.id_produto,
         title: product.nome,
-        category: product.genero || 'Esportes',
-        group: product.genero || 'Esportes',
+        category: mapCategoryFromId(product.id_categoria, product.genero),
+        group: product.genero || 'Unissex',
         sport: product.genero || 'Treino',
         price: Number(product.preco || 0),
         rating: 4.7,
@@ -378,7 +389,8 @@ async function loadProductsFromApi(searchTerm = '') {
         description: product.descricao || 'Produto esportivo',
         sizes: product.numeracao || 'Único',
         gender: product.genero || 'Unissex',
-        folders: ['/produtos', '/esportes']
+        folders: getFoldersByCategory(mapCategoryFromId(product.id_categoria, product.genero)),
+        sales: Number(productSales[product.id_produto] || 0)
       }));
       return;
     }
@@ -466,6 +478,7 @@ function updateAccountButton() {
 
 function logoutUser() {
   currentUser = null;
+  authToken = '';
   clearSessionStorage();
   updateAccountButton();
   closeAccountDropdown();
@@ -474,12 +487,14 @@ function logoutUser() {
 
 function addToCart(id, qty = 1, options = {}) {
   const { fromWishlist = false, showDecision = false } = options;
-  const item = cart.find((cartItem) => cartItem.id === Number(id));
+  const variant = getVariant(Number(id));
+  const key = getCartKey(Number(id), variant.size);
+  const item = cart.find((cartItem) => cartItem.key === key);
 
   if (item) {
     item.qty += qty;
   } else {
-    cart.push({ id: Number(id), qty });
+    cart.push({ id: Number(id), qty, size: variant.size, gender: variant.gender, key });
   }
 
   if (fromWishlist) {
@@ -567,7 +582,7 @@ function renderProductCard(product) {
         <button class="wish-btn ${wishlist.includes(product.id) ? 'active' : ''}" onclick="toggleWish(${product.id})">❤</button>
       </div>
       <div class="product-body">
-        <div class="product-category">${product.category} • ${product.sport}</div>
+        <div class="product-category">${product.category} • ${getVisibleGender(product.gender)} • ${product.sport}</div>
         <h3 class="product-title" onclick="openProductDetails(${product.id})">${product.title}</h3>
         <div class="product-meta">
           <div class="price-wrap">
@@ -586,12 +601,42 @@ function renderProductCard(product) {
   `;
 }
 
+
+function mapCategoryFromId(categoryId, fallback = 'Esportes') {
+  const map = { 1: 'Masculino', 2: 'Feminino', 3: 'Calçados', 4: 'Acessórios', 5: 'Esportes' };
+  return map[Number(categoryId)] || fallback || 'Esportes';
+}
+
+function getFoldersByCategory(category) {
+  return ['/produtos', CATEGORY_FOLDERS[category] || '/esportes', '/esportes'];
+}
+
+function saveReviews() {
+  localStorage.setItem('sportx-product-reviews', JSON.stringify(productReviews));
+}
+
+function saveSales() {
+  localStorage.setItem('sportx-product-sales', JSON.stringify(productSales));
+}
+
+function getVariant(id) {
+  return selectedVariants[id] || { size: 'Único', gender: getProduct(id)?.gender || 'Unissex' };
+}
+
+function setVariant(id, variant) {
+  selectedVariants[id] = { ...getVariant(id), ...variant };
+}
+
+function getCartKey(id, size) {
+  return `${id}-${size || 'Único'}`;
+}
+
 function renderProducts() {
   const grid = document.getElementById('productsGrid');
   const searchInput = document.getElementById('searchInput');
-  if (!grid || !searchInput) return;
+  if (!grid) return;
 
-  const term = searchInput.value.trim().toLowerCase();
+  const term = searchInput?.value?.trim().toLowerCase() || '';
 
   const sourceProducts = allProducts.length ? allProducts : productsWithDetails;
 
@@ -684,14 +729,14 @@ function renderCart() {
           <img src="${product.image}" alt="${product.title}" />
           <div>
             <strong style="display:block;margin-bottom:4px;">${product.title}</strong>
-            <small style="color:#666;display:block;">${currency(product.price)}</small>
+            <small style="color:#666;display:block;">${currency(product.price)}</small><small style="color:#666;display:block;">Tam: ${item.size || 'Único'} • ${item.gender || getVisibleGender(product.gender)}</small>
             <div class="qty">
               <button onclick="changeQty(${product.id}, -1)">−</button>
               <span>${item.qty}</span>
               <button onclick="changeQty(${product.id}, 1)">+</button>
             </div>
           </div>
-          <button class="icon-btn" onclick="removeFromCart(${product.id})">✕</button>
+          <button class="icon-btn" onclick="removeFromCart('${item.key || getCartKey(product.id, item.size)}')">✕</button>
         </div>
       `;
       })
@@ -747,7 +792,7 @@ function renderCheckout() {
 
         return `
         <div class="summary-row">
-          <span>${product.title} x${item.qty}</span>
+          <span>${product.title} (${item.size || 'Único'}) x${item.qty}</span>
           <strong>${currency(product.price * item.qty)}</strong>
         </div>
       `;
@@ -776,8 +821,8 @@ function changeQty(id, delta) {
   updateCounters();
 }
 
-function removeFromCart(id) {
-  cart = cart.filter((item) => item.id !== id);
+function removeFromCart(key) {
+  cart = cart.filter((item) => (item.key || getCartKey(item.id, item.size)) !== key);
   saveState();
   renderCart();
   renderCheckout();
@@ -837,6 +882,11 @@ function renderProductModalContent(item) {
   const content = document.getElementById('productModalContent');
   if (!content || !item) return;
 
+  const sizes = String(item.sizes || 'Único').split(',').map((s) => s.trim()).filter(Boolean);
+  const genders = item.gender === 'Unissex' ? ['Unissex'] : ['Masculino', 'Feminino'];
+  const reviews = productReviews[item.id] || [];
+  const avg = reviews.length ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : item.rating;
+
   content.innerHTML = `
     <img src="${item.image}" alt="${item.title}" />
     <div>
@@ -844,12 +894,71 @@ function renderProductModalContent(item) {
       <p>${item.description}</p>
       <div class="product-modal-meta">
         <span><strong>Preço:</strong> ${currency(item.price)}</span>
-        <span><strong>Numeração:</strong> ${item.sizes}</span>
-        <span><strong>Gênero:</strong> ${getVisibleGender(item.gender)}</span>
+        <span><strong>Avaliação:</strong> ⭐ ${avg}</span>
       </div>
-      <button class="btn btn-primary top-gap-sm" onclick="addToCart(${item.id}); toggleProductModal(false);">Adicionar ao carrinho</button>
+      <div class="input-group top-gap-sm">
+        <label>Tamanho/numeração</label>
+        <select id="productSizeSelect">${sizes.map((size) => `<option value="${size}">${size}</option>`).join('')}</select>
+      </div>
+      <div class="input-group top-gap-sm">
+        <label>Gênero</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${genders.map((g) => `<button type="button" class="btn btn-light gender-option" data-gender="${g}">${g}</button>`).join('')}
+        </div>
+      </div>
+      <button class="btn btn-primary top-gap-sm" id="productAddToCartBtn">Adicionar ao carrinho</button>
+      <div class="top-gap-sm">
+        <h4>Avaliações (${reviews.length})</h4>
+        <div id="productReviewsList">${reviews.length ? reviews.map((review) => `<p>⭐ ${review.rating} - ${review.comment}</p>`).join('') : '<p>Ainda sem avaliações.</p>'}</div>
+      </div>
+      <form id="reviewForm" class="top-gap-sm" style="display:grid;gap:8px;">
+        <select id="reviewRating" required><option value="">Nota</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+        <textarea id="reviewComment" rows="2" placeholder="Escreva sua avaliação" required></textarea>
+        <button class="btn btn-light" type="submit">Enviar avaliação</button>
+      </form>
     </div>
   `;
+
+  setVariant(item.id, { size: sizes[0] || 'Único', gender: genders[0] || 'Unissex' });
+
+  document.querySelectorAll('.gender-option').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('.gender-option').forEach((btn) => btn.classList.remove('active'));
+      button.classList.add('active');
+      setVariant(item.id, { gender: button.dataset.gender });
+    });
+  });
+
+  const firstGender = document.querySelector('.gender-option');
+  if (firstGender) firstGender.classList.add('active');
+
+  document.getElementById('productSizeSelect')?.addEventListener('change', (event) => {
+    setVariant(item.id, { size: event.target.value });
+  });
+
+  document.getElementById('productAddToCartBtn')?.addEventListener('click', () => {
+    addToCart(item.id);
+    toggleProductModal(false);
+  });
+
+  document.getElementById('reviewForm')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!currentUser) {
+      showToast('Faça login para avaliar.');
+      return;
+    }
+
+    const rating = Number(document.getElementById('reviewRating')?.value);
+    const comment = document.getElementById('reviewComment')?.value.trim();
+    if (!rating || !comment) return;
+
+    const list = productReviews[item.id] || [];
+    list.unshift({ rating, comment, user: currentUser.name || currentUser.email, createdAt: new Date().toISOString() });
+    productReviews[item.id] = list.slice(0, 20);
+    saveReviews();
+    showToast('Avaliação enviada com sucesso.');
+    renderProductModalContent(item);
+  });
 }
 
 function openProductDetails(id) {
@@ -955,11 +1064,12 @@ async function handleAuthSubmit(event) {
         body: JSON.stringify({ email, senha: password }),
       });
 
+      authToken = user.access_token || '';
       currentUser = {
-        id_usuario: user.id_usuario,
-        name: user.nome,
-        email: user.email,
-        type: user.tipo_usuario,
+        id_usuario: user.user?.id_usuario,
+        name: user.user?.nome,
+        email: user.user?.email,
+        type: user.user?.tipo_usuario,
       };
 
       saveUsers();
@@ -1133,6 +1243,10 @@ function registerEvents() {
       });
 
       cashbackBalance += cashback;
+      cart.forEach((item) => {
+        productSales[item.id] = Number(productSales[item.id] || 0) + item.qty;
+      });
+      saveSales();
       cart = [];
       saveState();
       renderCart();
@@ -1206,22 +1320,38 @@ function registerEvents() {
     }
 
     try {
+      const fileInput = document.getElementById('sellerProductImageFile');
+      const selectedFile = fileInput?.files?.[0];
+      let image = document.getElementById('sellerProductImage')?.value?.trim();
+      if (selectedFile) {
+        image = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedFile);
+        });
+      }
+
+      const category = document.getElementById('sellerProductCategory')?.value || 'Esportes';
+      const categoryMap = { Masculino: 1, Feminino: 2, 'Calçados': 3, 'Acessórios': 4, Esportes: 5 };
+
       await apiRequest('/produtos', {
         method: 'POST',
         body: JSON.stringify({
-          id_categoria: 1,
+          id_categoria: categoryMap[category] || 5,
           nome: document.getElementById('sellerProductName')?.value,
           descricao: document.getElementById('sellerProductDescription')?.value,
           preco: Number(document.getElementById('sellerProductPrice')?.value || 0),
           estoque: Number(document.getElementById('sellerProductStock')?.value || 0),
-          imagem: document.getElementById('sellerProductImage')?.value,
-          genero: 'Esportes',
-          numeracao: 'Único',
+          imagem: image,
+          genero: document.getElementById('sellerProductGender')?.value || 'Unissex',
+          numeracao: document.getElementById('sellerProductSizes')?.value || 'Único',
           ativo: true,
         }),
       });
 
-      showToast('Produto cadastrado com sucesso.');
+      localStorage.setItem('sportx-products-updated', String(Date.now()));
+      showToast('Produto cadastrado com sucesso e publicado na vitrine.');
       document.getElementById('sellerProductForm')?.reset();
     } catch (error) {
       showToast(error.message || 'Erro ao cadastrar produto.');
@@ -1260,11 +1390,44 @@ async function loadSavedPaymentPreference() {
   }
 }
 
+function renderBestSellers() {
+  const grid = document.getElementById('bestSellersGrid');
+  if (!grid) return;
+  const source = (allProducts.length ? allProducts : productsWithDetails).map((product) => ({ ...product, sales: Number(productSales[product.id] || 0) }));
+  const top = source.sort((a, b) => b.sales - a.sales).slice(0, 6);
+  grid.innerHTML = top.map(renderProductCard).join('');
+}
+
+function renderMonthlyPromotions() {
+  const grid = document.getElementById('monthlyPromotionsGrid');
+  if (!grid) return;
+  const date = new Date();
+  const seed = date.getFullYear() * 100 + (date.getMonth() + 1);
+  const source = [...(allProducts.length ? allProducts : productsWithDetails)];
+  const promos = source.filter((_, index) => ((index + seed) % 3) === 0).slice(0, 6).map((p) => ({ ...p, price: Number((p.price * 0.88).toFixed(2)), isNew: true }));
+  const label = document.getElementById('monthlyPromotionLabel');
+  if (label) label.textContent = `Promoções de ${date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} com até 12% OFF.`;
+  grid.innerHTML = promos.map(renderProductCard).join('');
+}
+
+function applyCategoryFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const category = params.get('categoria');
+  if (!category) return;
+  activeFilter = category;
+  activeFolder = CATEGORY_FOLDERS[category] || '';
+  const title = document.getElementById('categoryPageTitle');
+  if (title) title.textContent = `${category}`;
+}
+
 async function init() {
   loadState();
+  applyCategoryFromUrl();
   await loadProductsFromApi();
   renderProducts();
   renderLaunches();
+  renderBestSellers();
+  renderMonthlyPromotions();
   renderKits();
   renderCart();
   renderWishlist();
@@ -1275,6 +1438,16 @@ async function init() {
   updateAuthUI();
   updateAccountButton();
   registerEvents();
+
+  window.addEventListener('storage', async (event) => {
+    if (event.key === 'sportx-products-updated') {
+      await loadProductsFromApi();
+      renderProducts();
+      renderBestSellers();
+      renderMonthlyPromotions();
+    }
+  });
 }
+
 
 document.addEventListener('DOMContentLoaded', init);
