@@ -7,18 +7,23 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { PedidosService } from './pedidos.service';
 import { CreatePedidoDto } from './dto/create-pedido.dto';
 import { UpdatePedidoDto } from './dto/update-pedido.dto';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { TokenPayload } from '../auth/token.util';
 
 @Controller('pedidos')
+@UseGuards(AuthGuard)
 export class PedidosController {
   constructor(private readonly pedidosService: PedidosService) {}
 
   @Get()
-  findAll() {
-    return this.pedidosService.findAll();
+  findAll(@CurrentUser() user: TokenPayload) {
+    return this.pedidosService.findAll(user);
   }
 
   @Get(':id')
@@ -27,8 +32,11 @@ export class PedidosController {
   }
 
   @Post()
-  create(@Body() createPedidoDto: CreatePedidoDto) {
-    return this.pedidosService.create(createPedidoDto);
+  create(@Body() createPedidoDto: CreatePedidoDto, @CurrentUser() user: TokenPayload) {
+    return this.pedidosService.create({
+      ...createPedidoDto,
+      id_usuario: user.sub,
+    });
   }
 
   @Patch(':id')

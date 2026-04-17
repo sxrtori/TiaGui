@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { TokenPayload } from '../auth/token.util';
 import { Pedido } from './entities/pedido.entity';
 import { CreatePedidoDto } from './dto/create-pedido.dto';
 import { UpdatePedidoDto } from './dto/update-pedido.dto';
@@ -12,8 +13,9 @@ export class PedidosService {
     private readonly pedidoRepository: Repository<Pedido>,
   ) {}
 
-  async findAll(): Promise<Pedido[]> {
+  async findAll(user: TokenPayload): Promise<Pedido[]> {
     return this.pedidoRepository.find({
+      where: user.tipo_usuario === 'admin' ? {} : { id_usuario: user.sub },
       order: { id_pedido: 'ASC' },
     });
   }

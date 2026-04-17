@@ -1,9 +1,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { Produto } from './entities/produto.entity';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
+
+const CATEGORIA_ALIAS: Record<string, number> = {
+  masculino: 1,
+  feminino: 2,
+  calçados: 3,
+  calcados: 3,
+  acessórios: 4,
+  acessorios: 4,
+  esportes: 5,
+};
 
 @Injectable()
 export class ProdutosService {
@@ -26,13 +36,20 @@ export class ProdutosService {
 
     if (filters?.q?.trim()) {
       const term = `%${filters.q.trim()}%`;
+      const categoriaByText = CATEGORIA_ALIAS[filters.q.trim().toLowerCase()];
+      const whereList = [
+        { ...where, nome: ILike(term) },
+        { ...where, descricao: ILike(term) },
+        { ...where, marca: ILike(term) },
+        { ...where, modalidade: ILike(term) },
+      ];
+
+      if (categoriaByText) {
+        whereList.push({ ...where, id_categoria: In([categoriaByText]) });
+      }
+
       return this.produtoRepository.find({
-        where: [
-          { ...where, nome: ILike(term) },
-          { ...where, descricao: ILike(term) },
-          { ...where, marca: ILike(term) },
-          { ...where, modalidade: ILike(term) },
-        ],
+        where: whereList,
         order: { created_at: 'DESC' },
       });
     }
@@ -52,14 +69,31 @@ export class ProdutosService {
     return produto;
   }
 
+  async findBySlug(slug: string): Promise<Produto> {
+    const produto = await this.produtoRepository.findOne({
+      where: { slug },
+    });
+
+    if (!produto) throw new NotFoundException('Produto não encontrado');
+    return produto;
+  }
+
   async create(createProdutoDto: CreateProdutoDto): Promise<Produto> {
-    const produto = this.produtoRepository.create(createProdutoDto);
+    const produto = this.produtoRepository.create({
+      ...createProdutoDto,
+      slug: createProdutoDto.slug || this.slugify(createProdutoDto.nome),
+    });
     return this.produtoRepository.save(produto);
   }
 
   async update(id: number, updateProdutoDto: UpdateProdutoDto): Promise<Produto> {
     const produto = await this.findOne(id);
-    Object.assign(produto, updateProdutoDto);
+    Object.assign(produto, {
+      ...updateProdutoDto,
+      slug:
+        updateProdutoDto.slug ||
+        (updateProdutoDto.nome ? this.slugify(updateProdutoDto.nome) : produto.slug),
+    });
     return this.produtoRepository.save(produto);
   }
 
@@ -77,5 +111,15 @@ export class ProdutosService {
     const produto = await this.findOne(id);
     await this.produtoRepository.remove(produto);
     return { message: 'Produto removido com sucesso' };
+  }
+
+  private slugify(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '')
+      .slice(0, 180);
   }
 }

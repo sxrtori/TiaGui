@@ -43,6 +43,11 @@ export class ProdutosController {
     return this.produtosService.findAll({ vendedorId: id });
   }
 
+  @Get('slug/:slug')
+  findBySlug(@Param('slug') slug: string) {
+    return this.produtosService.findBySlug(slug);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.produtosService.findOne(id);

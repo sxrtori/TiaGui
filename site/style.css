@@ -2009,3 +2009,111 @@ textarea:focus {
     padding: 10px 10px;
   }
 }
+
+/* Product page enhancements */
+.product-layout-pro {
+  grid-template-columns: minmax(320px, 520px) minmax(280px, 1fr);
+  gap: 28px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.product-details-pro {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.variation-block {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.variation-title {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  color: #303030;
+}
+
+.color-swatches {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 2px solid #d5d5d5;
+  padding: 3px;
+}
+
+.color-swatch span {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 999px;
+}
+
+.color-swatch.active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.2);
+}
+
+.size-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 10px;
+  max-width: 360px;
+}
+
+.size-btn {
+  border: 1px solid #cecece;
+  border-radius: 8px;
+  min-height: 42px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.size-btn.active {
+  border-color: var(--black);
+  background: #0f0f0f;
+  color: #fff;
+}
+
+.benefits-list {
+  display: grid;
+  gap: 8px;
+  background: #f8f8f8;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.shipping-option {
+  border: 1px solid #e6e6e6;
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shipping-option.mais-rapida {
+  border-color: #2e8b57;
+}
+
+.shipping-option.melhor-custo-beneficio {
+  border-color: #1565c0;
+}
+
+@media (max-width: 860px) {
+  .product-layout-pro {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+}

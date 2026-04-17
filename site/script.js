@@ -21,7 +21,9 @@ const DEFAULT_PRODUCTS = [
   { id: 3, nome: 'Puma Camisa Dry Power', descricao: 'Camisa dry fit para treinos.', preco: 129.9, imagem: 'https://images.puma.com/image/upload/f_auto,q_auto,w_600,b_rgb:FAFAFA/global/526718/51/mod01/fnd/BRA/fmt/png', categoria: 'Masculino', genero: 'Masculino', tamanhos: 'P,M,G,GG', modalidade: 'Academia', estoque: 30, marca: 'Puma', cashback: 3, desconto: 0, badgeLancamento: false, promocaoAtiva: false, vendedorId: 1, notaMedia: 4.7, totalAvaliacoes: 8, dataCriacao: '2026-03-18T10:00:00.000Z', vendas: 11 }
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null };
+const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null };
+
+const FREE_SHIPPING_THRESHOLD = 400;
 
 const currency = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const discountedPrice = (p) => Number((p.preco * (1 - Number(p.desconto || 0) / 100)).toFixed(2));
@@ -46,6 +48,11 @@ async function apiRequest(path, options = {}) {
 }
 
 function normalizeProduct(p) {
+  const fallbackSizes = String(p.tamanhos || p.numeracao || 'Único').split(',').map((size) => size.trim()).filter(Boolean);
+  const firstImage = p.imagem || 'https://via.placeholder.com/600x600?text=SportX';
+  const galeria = p.galeria_imagens ? String(p.galeria_imagens).split(',').map((i) => i.trim()).filter(Boolean) : [firstImage].filter(Boolean);
+  const cores = Array.isArray(p.cores) ? p.cores : [{ nome: p.cor || 'Padrão', hex: p.corHex || '#c7c7c7', imagens: [firstImage, ...galeria].slice(0, 5) }];
+
   return {
     id: Number(p.id ?? p.id_produto ?? Date.now()),
     nome: p.nome || 'Produto',
@@ -53,11 +60,12 @@ function normalizeProduct(p) {
     preco: Number(p.preco || 0),
     precoPromocional: Number(p.preco_promocional || 0),
     desconto: Number(p.desconto || 0),
-    imagem: p.imagem || 'https://via.placeholder.com/600x600?text=SportX',
-    galeria: p.galeria_imagens ? String(p.galeria_imagens).split(',').map((i) => i.trim()).filter(Boolean) : [p.imagem].filter(Boolean),
+    imagem: firstImage,
+    galeria,
+    cores,
     categoria: p.categoria || CATEGORY_BY_ID[p.id_categoria] || 'Esportes',
     genero: p.genero || 'Unissex',
-    tamanhos: p.tamanhos || p.numeracao || 'Único',
+    tamanhos: fallbackSizes,
     marca: p.marca || 'SportX',
     estoque: Number(p.estoque || 0),
     cashback: Number(p.cashback || 0),
@@ -119,7 +127,7 @@ function filterProducts({ search = '', category = '', gender = '', promoOnly = f
     if (promoOnly && !p.promocaoAtiva && Number(p.desconto || 0) <= 0) return false;
     if (category && p.categoria !== category && p.genero !== category) return false;
     if (gender && p.genero !== gender) return false;
-    if (s && !`${p.nome} ${p.marca} ${p.modalidade}`.toLowerCase().includes(s)) return false;
+    if (s && !`${p.nome} ${p.marca} ${p.modalidade} ${p.categoria} ${p.genero}`.toLowerCase().includes(s)) return false;
     return true;
   });
 }
@@ -169,22 +177,44 @@ async function renderProductPage() {
   const related = state.products.filter((x) => x.id !== p.id && (x.categoria === p.categoria || x.modalidade === p.modalidade)).slice(0, 4);
   const buyTogether = state.products.filter((x) => x.id !== p.id).slice(0, 3);
 
+  const selectedColor = p.cores[0] || { nome: 'Padrão', hex: '#ccc', imagens: [p.imagem] };
+  const selectedSize = p.tamanhos[0] || 'Único';
+
   root.innerHTML = `
     <nav class="breadcrumb"> <a href="index.html">Página Inicial</a> / <a href="categoria.html?categoria=${encodeURIComponent(p.genero)}">${p.genero}</a> / <a href="categoria.html?categoria=${encodeURIComponent(p.categoria)}">${p.categoria}</a> / <span>${p.nome}</span> </nav>
-    <section class="product-layout">
+    <section class="product-layout product-layout-pro">
       <div class="product-gallery">
-        <img id="mainProductImage" class="product-main-image" src="${p.imagem}" alt="${p.nome}" />
-        <div class="product-thumbs">${[p.imagem, ...p.galeria].filter(Boolean).slice(0,5).map((img) => `<button class="thumb-btn" data-thumb="${img}"><img src="${img}" alt="thumb"></button>`).join('')}</div>
+        <img id="mainProductImage" class="product-main-image" src="${selectedColor.imagens?.[0] || p.imagem}" alt="${p.nome}" />
+        <div class="product-thumbs" id="productThumbs">${(selectedColor.imagens?.length ? selectedColor.imagens : [p.imagem, ...p.galeria]).filter(Boolean).slice(0,5).map((img) => `<button class="thumb-btn" data-thumb="${img}"><img src="${img}" alt="thumb"></button>`).join('')}</div>
       </div>
-      <div class="product-details">
+      <div class="product-details product-details-pro">
         <h1>${p.nome}</h1>
         <p class="lead">${p.categoria} • ${p.marca} • ${p.modalidade}</p>
         <div class="product-rating-row">⭐ ${media || p.notaMedia} <span>(${total || p.totalAvaliacoes} avaliações)</span></div>
         <div class="product-price-box"><strong>${currency(discountedPrice(p))}</strong>${Number(p.desconto)>0 ? `<span class="old-price">${currency(p.preco)}</span><span class="discount-tag">-${p.desconto}%</span>` : ''}</div>
-        <label>Tamanho/Numeração</label>
-        <select id="productSize">${String(p.tamanhos).split(',').map((t) => `<option>${t.trim()}</option>`).join('')}</select>
-        <div class="product-actions-row"><button class="btn btn-primary" data-action="cart" data-id="${p.id}">Adicionar ao carrinho</button><button class="btn btn-light" data-action="wish" data-id="${p.id}">Favoritar</button></div>
-        <div class="frete-box"><label>Calcular frete</label><div class="frete-form"><input id="freteCep" placeholder="Digite o CEP"/><button id="calcFreteBtn" class="btn btn-light">Calcular</button></div><small id="freteResult"></small></div>
+
+        <div class="variation-block">
+          <p class="variation-title">Cor selecionada: <strong id="selectedColorName">${selectedColor.nome}</strong></p>
+          <div class="color-swatches" id="colorSwatches">${p.cores.map((cor, idx) => `<button class="color-swatch ${idx === 0 ? 'active' : ''}" data-color="${idx}" title="${cor.nome}"><span style="background:${cor.hex || '#ccc'}"></span></button>`).join('')}</div>
+        </div>
+
+        <div class="variation-block">
+          <p class="variation-title">Tamanho</p>
+          <div class="size-grid" id="sizeGrid">${p.tamanhos.map((size, idx) => `<button class="size-btn ${idx === 0 ? 'active' : ''}" data-size="${size}">${size}</button>`).join('')}</div>
+        </div>
+
+        <div class="product-actions-row"><button class="btn btn-primary" id="addToCartProductBtn" data-id="${p.id}">Adicionar ao carrinho</button><button class="btn btn-light" data-action="wish" data-id="${p.id}">Favoritar</button></div>
+
+        <div class="benefits-list">
+          <div>🔒 Compra 100% segura</div>
+          <div>↩ Devolução facilitada em até 7 dias</div>
+          <div>🚚 Entrega rápida para todo o Brasil</div>
+          <div>💳 Parcelamento em até 10x</div>
+          <div>🎁 Benefícios exclusivos para clientes</div>
+          <div>⭐ Frete grátis acima de ${currency(FREE_SHIPPING_THRESHOLD)}</div>
+        </div>
+
+        <div class="frete-box"><label>Calcular frete</label><div class="frete-form"><input id="freteCep" placeholder="Digite o CEP"/><button id="calcFreteBtn" class="btn btn-light">Calcular</button></div><div id="freteResult"></div></div>
       </div>
     </section>
     <section class="section"><h3>Descrição detalhada</h3><p>${p.descricao}</p></section>
@@ -195,8 +225,52 @@ async function renderProductPage() {
     <section class="section"><h3>Compre junto</h3><div class="products-grid">${buyTogether.map(renderProductCard).join('')}</div></section>
   `;
 
-  root.querySelectorAll('[data-thumb]').forEach((btn) => btn.addEventListener('click', () => { document.getElementById('mainProductImage').src = btn.dataset.thumb; }));
-  document.getElementById('calcFreteBtn')?.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('freteResult').textContent = 'Entrega estimada: 4 a 8 dias úteis.'; });
+  let currentColorIndex = 0;
+  let currentSize = selectedSize;
+
+  const rerenderThumbs = () => {
+    const color = p.cores[currentColorIndex] || selectedColor;
+    const images = (color.imagens?.length ? color.imagens : [p.imagem, ...p.galeria]).filter(Boolean);
+    document.getElementById('selectedColorName').textContent = color.nome;
+    document.getElementById('mainProductImage').src = images[0] || p.imagem;
+    document.getElementById('productThumbs').innerHTML = images.slice(0, 5).map((img) => `<button class="thumb-btn" data-thumb="${img}"><img src="${img}" alt="thumb"></button>`).join('');
+    document.querySelectorAll('[data-thumb]').forEach((btn) => btn.addEventListener('click', () => { document.getElementById('mainProductImage').src = btn.dataset.thumb; }));
+  };
+
+  document.querySelectorAll('.color-swatch').forEach((btn) => btn.addEventListener('click', () => {
+    currentColorIndex = Number(btn.dataset.color || 0);
+    document.querySelectorAll('.color-swatch').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    rerenderThumbs();
+  }));
+
+  document.querySelectorAll('.size-btn').forEach((btn) => btn.addEventListener('click', () => {
+    currentSize = btn.dataset.size;
+    document.querySelectorAll('.size-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+  }));
+
+  rerenderThumbs();
+
+  document.getElementById('addToCartProductBtn')?.addEventListener('click', () => {
+    const color = p.cores[currentColorIndex] || selectedColor;
+    addToCart(p.id, { selectedSize: currentSize, selectedColor: color.nome, selectedColorHex: color.hex, skipAuth: false });
+  });
+
+  document.getElementById('calcFreteBtn')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const cep = (document.getElementById('freteCep').value || '').trim();
+    if (!cep) return showToast('Informe um CEP para calcular o frete.');
+    const resultEl = document.getElementById('freteResult');
+    resultEl.innerHTML = '<small>Calculando...</small>';
+    try {
+      const result = await apiRequest('/frete/calcular', { method: 'POST', body: JSON.stringify({ cep, subtotal: discountedPrice(p) }) });
+      const options = result.opcoes || [];
+      resultEl.innerHTML = options.map((op) => `<article class="shipping-option ${op.destaque || ''}"><strong>${op.nome}</strong><span>${currency(op.valor)} • ${op.prazoMin} a ${op.prazoMax} dias úteis</span></article>`).join('');
+    } catch (_e) {
+      resultEl.innerHTML = '<small>Não foi possível calcular agora. Tente novamente.</small>';
+    }
+  });
 
   document.getElementById('reviewForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -373,19 +447,22 @@ function saveSessionState() {
 function getCartEntries() {
   return state.cart.map((item) => {
     const product = getProductById(item.id);
-    return product ? { product, qty: Number(item.qty || 1) } : null;
+    return product ? { product, qty: Number(item.qty || 1), selectedSize: item.selectedSize || '', selectedColor: item.selectedColor || '' } : null;
   }).filter(Boolean);
 }
 
 function updateCartTotals() {
   const entries = getCartEntries();
   const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : 24.9;
   const cashback = entries.reduce((sum, { product, qty }) => sum + ((discountedPrice(product) * qty) * Number(product.cashback || 0) / 100), 0);
   const subtotalEl = document.getElementById('cartSubtotal');
   const totalEl = document.getElementById('cartTotal');
   const cashbackEl = document.getElementById('cartCashback');
+  const shippingEl = document.getElementById('cartShipping');
   if (subtotalEl) subtotalEl.textContent = currency(subtotal);
-  if (totalEl) totalEl.textContent = currency(subtotal);
+  if (shippingEl) shippingEl.textContent = shipping === 0 ? 'Grátis' : currency(shipping);
+  if (totalEl) totalEl.textContent = currency(subtotal + shipping);
   if (cashbackEl) cashbackEl.textContent = currency(cashback);
 }
 
@@ -396,12 +473,13 @@ function renderCart() {
   if (!entries.length) {
     target.innerHTML = '<div class="empty-state"><h3>Seu carrinho está vazio.</h3><p>Adicione produtos para continuar.</p></div>';
   } else {
-    target.innerHTML = entries.map(({ product, qty }) => `
+    target.innerHTML = entries.map(({ product, qty, selectedColor, selectedSize }) => `
       <article class="drawer-item">
         <img src="${product.imagem}" alt="${product.nome}" />
         <div>
           <strong>${product.nome}</strong>
           <p>${currency(discountedPrice(product))}</p>
+          <small>${selectedColor ? `Cor: ${selectedColor}` : ''} ${selectedSize ? `• Tam: ${selectedSize}` : ''}</small>
           <div class="qty">
             <button data-action="decrease-cart" data-id="${product.id}">−</button>
             <span>${qty}</span>
@@ -562,10 +640,10 @@ async function handleAuthSubmit(event) {
 
 function addToCart(id, options = {}) {
   if (!state.currentUser && !options.skipAuth) {
-    return ensureAuth(() => addToCart(id, { skipAuth: true }), 'Faça login para continuar');
+    return ensureAuth(() => addToCart(id, { ...options, skipAuth: true }), 'Faça login para continuar');
   }
-  const item = state.cart.find((x) => Number(x.id) === Number(id));
-  if (item) item.qty += 1; else state.cart.push({ id: Number(id), qty: 1 });
+  const item = state.cart.find((x) => Number(x.id) === Number(id) && String(x.selectedSize || '') === String(options.selectedSize || '') && String(x.selectedColor || '') === String(options.selectedColor || ''));
+  if (item) item.qty += 1; else state.cart.push({ id: Number(id), qty: 1, selectedSize: options.selectedSize || '', selectedColor: options.selectedColor || '', selectedColorHex: options.selectedColorHex || '' });
   saveSessionState();
   renderCart();
   showToast('Produto adicionado ao carrinho.');
@@ -653,7 +731,7 @@ function setupFilters() {
 }
 
 function loadSession() {
-  state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]').map((i) => ({ id: Number(i.id), qty: Number(i.qty || 1) }));
+  state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]').map((i) => ({ id: Number(i.id), qty: Number(i.qty || 1), selectedSize: i.selectedSize || '', selectedColor: i.selectedColor || '', selectedColorHex: i.selectedColorHex || '' }));
   state.wishlist = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]').map(Number);
   state.currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.user) || 'null');
   state.authToken = localStorage.getItem(STORAGE_KEYS.token) || '';
