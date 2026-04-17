@@ -6,6 +6,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
 import { PedidosModule } from './pedidos/pedidos.module';
 import { AuthModule } from './auth/auth.module';
 import { PagamentosModule } from './pagamentos/pagamentos.module';
+import { AvaliacoesModule } from './avaliacoes/avaliacoes.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { PagamentosModule } from './pagamentos/pagamentos.module';
     PedidosModule,
     AuthModule,
     PagamentosModule,
+    AvaliacoesModule,
   ],
 })
 export class AppModule {}
