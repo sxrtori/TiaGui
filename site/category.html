@@ -6,7 +6,7 @@
   <title>SportX | Categoria</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body data-page="category">
   <main class="section">
     <div class="container">
       <a href="index.html" class="btn btn-light" style="margin-bottom:16px;">← Voltar para início</a>
@@ -14,11 +14,33 @@
         <div>
           <div class="eyebrow">Categoria</div>
           <h1 id="categoryPageTitle">Produtos</h1>
+          <p class="lead">Use busca, filtros avançados e ordenação para encontrar o produto ideal.</p>
         </div>
       </div>
+
+      <div class="advanced-filters">
+        <input id="categorysearchInput" type="text" placeholder="Buscar por nome, categoria, marca ou modalidade" />
+        <select id="categorycategoryFilter"><option value="">Categoria</option><option>Masculino</option><option>Feminino</option><option>Calçados</option><option>Acessórios</option><option>Esportes</option></select>
+        <select id="categorygenderFilter"><option value="">Gênero</option><option>Masculino</option><option>Feminino</option><option>Unissex</option></select>
+        <select id="categoryratingFilter"><option value="0">Avaliação mínima</option><option value="4">4+</option><option value="4.5">4.5+</option></select>
+        <input id="categorypriceFilter" type="number" min="0" placeholder="Preço máximo" />
+        <select id="categorysortFilter"><option value="recentes">Mais recentes</option><option value="preco-menor">Menor preço</option><option value="preco-maior">Maior preço</option><option value="melhor-avaliacao">Melhor avaliação</option><option value="mais-vendidos">Mais vendidos</option></select>
+      </div>
+
       <div class="products-grid" id="productsGrid"></div>
     </div>
   </main>
+
+  <div class="product-modal" id="productModal">
+    <div class="product-modal-panel">
+      <div class="drawer-head checkout-top">
+        <h3 class="checkout-title">Detalhes do produto</h3>
+        <button class="icon-btn" onclick="toggleProductModal(false)">✕</button>
+      </div>
+      <div class="product-modal-content" id="productModalContent"></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast">Ação realizada</div>
   <script src="script.js"></script>
 </body>
