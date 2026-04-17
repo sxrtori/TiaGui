@@ -26,13 +26,10 @@
 
       <nav class="nav-links">
         <a href="#categorias">Categorias</a>
-        <a href="#lancamentos">Lançamentos</a>
         <a href="promocoes.html">Promoções</a>
-        <a href="meus-produtos.html">Meus produtos</a>
-        <a href="#kits">Kits</a>
+        <a href="#lancamentos">Lançamentos</a>
+        <a href="#produtos">Mais vendidos</a>
         <a href="#cashback">Cashback</a>
-        <a href="#gift-card">Gift Card</a>
-        <a href="#app">App</a>
       </nav>
 
       <div class="nav-actions">
@@ -40,8 +37,8 @@
           <button class="account-btn" id="openAuthBtn">
             <span class="account-icon" id="accountIcon">👤</span>
             <span class="account-texts">
-              <strong id="accountLabel">Entrar / Cadastrar</strong>
-              <small id="accountSubLabel">Acesse sua conta</small>
+              <strong id="accountLabel">Entrar</strong>
+              <small id="accountSubLabel">Minha conta</small>
             </span>
           </button>
 
@@ -66,7 +63,7 @@
 
         <div class="search">
           <span>🔍</span>
-          <input type="text" placeholder="Busca rápida na vitrine abaixo" />
+          <input type="text" placeholder="Buscar produtos" />
         </div>
 
         <button class="icon-btn" id="wishlistToggle" aria-label="Abrir wishlist">
@@ -586,13 +583,18 @@
       <div class="auth-header">
         <div>
           <div class="eyebrow">Acesso SportX</div>
-          <h3 id="authTitle">Criar conta</h3>
+          <h3 id="authTitle">Entrar</h3>
         </div>
         <button class="icon-btn" id="closeAuthBtn">✕</button>
       </div>
 
+      <div class="auth-tabs" role="tablist" aria-label="Ações de autenticação">
+        <button type="button" class="auth-tab active" data-auth-mode="login">Entrar</button>
+        <button type="button" class="auth-tab" data-auth-mode="register">Criar conta</button>
+      </div>
+
       <form id="authForm" class="auth-form">
-        <div class="input-group" id="nameField">
+        <div class="input-group hidden" id="nameField">
           <label>Nome</label>
           <input type="text" id="authName" placeholder="Seu nome completo" />
         </div>
@@ -607,7 +609,7 @@
           <input type="password" id="authPassword" placeholder="••••••••" />
         </div>
 
-        <div class="input-group" id="accountTypeField">
+        <div class="input-group hidden" id="accountTypeField">
           <label>Tipo de conta</label>
           <select id="authType">
             <option value="comprador">Comprador</option>
@@ -615,10 +617,12 @@
           </select>
         </div>
 
+        <p class="auth-feedback" id="authFeedback"></p>
+
         <label class="checkbox-label"><input type="checkbox" id="rememberSession" checked /> Permanecer conectado</label>
 
-        <button type="submit" class="btn btn-primary full-width" id="authSubmitBtn">Criar conta</button>
-        <button type="button" class="btn btn-light full-width" id="toggleAuthModeBtn">Já tenho login</button>
+        <button type="submit" class="btn btn-primary full-width" id="authSubmitBtn">Entrar</button>
+        <button type="button" class="btn btn-light full-width" id="toggleAuthModeBtn">Criar conta</button>
       </form>
     </div>
   </div>
