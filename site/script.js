@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   wishlist: 'sportx-wishlist',
   user: 'sportx-current-user',
   token: 'sportx-token',
+  users: 'sportx-local-users',
   localProducts: 'sportx-local-products',
   localReviews: 'sportx-local-reviews',
   orders: 'sportx-local-orders',
@@ -20,7 +21,7 @@ const DEFAULT_PRODUCTS = [
   { id: 3, nome: 'Puma Camisa Dry Power', descricao: 'Camisa dry fit para treinos.', preco: 129.9, imagem: 'https://images.puma.com/image/upload/f_auto,q_auto,w_600,b_rgb:FAFAFA/global/526718/51/mod01/fnd/BRA/fmt/png', categoria: 'Masculino', genero: 'Masculino', tamanhos: 'P,M,G,GG', modalidade: 'Academia', estoque: 30, marca: 'Puma', cashback: 3, desconto: 0, badgeLancamento: false, promocaoAtiva: false, vendedorId: 1, notaMedia: 4.7, totalAvaliacoes: 8, dataCriacao: '2026-03-18T10:00:00.000Z', vendas: 11 }
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {} };
+const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null };
 
 const currency = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const discountedPrice = (p) => Number((p.preco * (1 - Number(p.desconto || 0) / 100)).toFixed(2));
@@ -319,27 +320,293 @@ async function submitSellerProduct(event) {
   else document.getElementById('sellerProductForm').reset();
 }
 
-function addToCart(id) {
-  const curr = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]');
-  const item = curr.find((x) => Number(x.id) === Number(id));
-  if (item) item.qty += 1; else curr.push({ id: Number(id), qty: 1 });
-  localStorage.setItem(STORAGE_KEYS.cart, JSON.stringify(curr));
+function updateHeaderUserUI() {
+  const accountLabel = document.getElementById('accountLabel');
+  const accountSubLabel = document.getElementById('accountSubLabel');
+  const accountDropdownName = document.getElementById('accountDropdownName');
+  const accountDropdownType = document.getElementById('accountDropdownType');
+  const accountIcon = document.getElementById('accountIcon');
+  const accountDropdownAvatar = document.getElementById('accountDropdownAvatar');
+  const sellerMenuBtn = document.getElementById('sellerMenuBtn');
+  const openAuthBtn = document.getElementById('openAuthBtn');
+
+  if (!openAuthBtn) return;
+  if (state.currentUser) {
+    const name = state.currentUser.name || state.currentUser.nome || state.currentUser.email || 'Minha conta';
+    const avatar = String(name).trim().charAt(0).toUpperCase() || 'U';
+    accountLabel && (accountLabel.textContent = name);
+    accountSubLabel && (accountSubLabel.textContent = state.currentUser.type === 'vendedor' ? 'Conta vendedor' : 'Conta ativa');
+    accountDropdownName && (accountDropdownName.textContent = `Olá, ${name}`);
+    accountDropdownType && (accountDropdownType.textContent = state.currentUser.type === 'vendedor' ? 'Painel do vendedor' : 'Conta de comprador');
+    accountIcon && (accountIcon.textContent = avatar);
+    accountDropdownAvatar && (accountDropdownAvatar.textContent = avatar);
+    sellerMenuBtn && (sellerMenuBtn.style.display = state.currentUser.type === 'vendedor' ? 'block' : 'none');
+    openAuthBtn.classList.add('is-authenticated');
+  } else {
+    accountLabel && (accountLabel.textContent = 'Entrar');
+    accountSubLabel && (accountSubLabel.textContent = 'Minha conta');
+    accountDropdownName && (accountDropdownName.textContent = 'Olá');
+    accountDropdownType && (accountDropdownType.textContent = 'Faça login para continuar');
+    accountIcon && (accountIcon.textContent = '👤');
+    accountDropdownAvatar && (accountDropdownAvatar.textContent = '👤');
+    sellerMenuBtn && (sellerMenuBtn.style.display = 'none');
+    openAuthBtn.classList.remove('is-authenticated');
+  }
+}
+
+function updateCartBadge() {
+  const totalItems = state.cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  const badge = document.getElementById('cartCount');
+  if (badge) badge.textContent = String(totalItems);
+}
+
+function updateWishlistBadge() {
+  const badge = document.getElementById('wishlistCount');
+  if (badge) badge.textContent = String(state.wishlist.length);
+}
+
+function saveSessionState() {
+  localStorage.setItem(STORAGE_KEYS.cart, JSON.stringify(state.cart));
+  localStorage.setItem(STORAGE_KEYS.wishlist, JSON.stringify(state.wishlist));
+}
+
+function getCartEntries() {
+  return state.cart.map((item) => {
+    const product = getProductById(item.id);
+    return product ? { product, qty: Number(item.qty || 1) } : null;
+  }).filter(Boolean);
+}
+
+function updateCartTotals() {
+  const entries = getCartEntries();
+  const subtotal = entries.reduce((sum, { product, qty }) => sum + (discountedPrice(product) * qty), 0);
+  const cashback = entries.reduce((sum, { product, qty }) => sum + ((discountedPrice(product) * qty) * Number(product.cashback || 0) / 100), 0);
+  const subtotalEl = document.getElementById('cartSubtotal');
+  const totalEl = document.getElementById('cartTotal');
+  const cashbackEl = document.getElementById('cartCashback');
+  if (subtotalEl) subtotalEl.textContent = currency(subtotal);
+  if (totalEl) totalEl.textContent = currency(subtotal);
+  if (cashbackEl) cashbackEl.textContent = currency(cashback);
+}
+
+function renderCart() {
+  const target = document.getElementById('cartItems');
+  if (!target) return;
+  const entries = getCartEntries();
+  if (!entries.length) {
+    target.innerHTML = '<div class="empty-state"><h3>Seu carrinho está vazio.</h3><p>Adicione produtos para continuar.</p></div>';
+  } else {
+    target.innerHTML = entries.map(({ product, qty }) => `
+      <article class="drawer-item">
+        <img src="${product.imagem}" alt="${product.nome}" />
+        <div>
+          <strong>${product.nome}</strong>
+          <p>${currency(discountedPrice(product))}</p>
+          <div class="qty">
+            <button data-action="decrease-cart" data-id="${product.id}">−</button>
+            <span>${qty}</span>
+            <button data-action="increase-cart" data-id="${product.id}">+</button>
+          </div>
+        </div>
+        <button class="btn-link" data-action="remove-cart" data-id="${product.id}">Remover</button>
+      </article>
+    `).join('');
+  }
+  updateCartBadge();
+  updateCartTotals();
+}
+
+function renderWishlist() {
+  const target = document.getElementById('wishlistItems');
+  if (!target) return;
+  if (!state.wishlist.length) {
+    target.innerHTML = '<div class="empty-state"><h3>Nenhum favorito salvo.</h3></div>';
+  } else {
+    const products = state.wishlist.map((id) => getProductById(id)).filter(Boolean);
+    target.innerHTML = products.map((product) => `
+      <article class="drawer-item">
+        <img src="${product.imagem}" alt="${product.nome}" />
+        <div>
+          <strong>${product.nome}</strong>
+          <p>${currency(discountedPrice(product))}</p>
+        </div>
+        <button class="btn-link" data-action="wish" data-id="${product.id}">Remover</button>
+      </article>
+    `).join('');
+  }
+  updateWishlistBadge();
+}
+
+function setAuthFeedback(message, type = '') {
+  const feedback = document.getElementById('authFeedback');
+  if (!feedback) return;
+  feedback.textContent = message || '';
+  feedback.className = `auth-feedback ${type}`.trim();
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode === 'register' ? 'register' : 'login';
+  const isRegister = state.authMode === 'register';
+  document.querySelectorAll('[data-auth-mode]').forEach((tab) => tab.classList.toggle('active', tab.dataset.authMode === state.authMode));
+  document.getElementById('authTitle') && (document.getElementById('authTitle').textContent = isRegister ? 'Criar conta' : 'Entrar');
+  document.getElementById('nameField')?.classList.toggle('hidden', !isRegister);
+  document.getElementById('accountTypeField')?.classList.toggle('hidden', !isRegister);
+  document.getElementById('authSubmitBtn') && (document.getElementById('authSubmitBtn').textContent = isRegister ? 'Criar conta' : 'Entrar');
+  document.getElementById('toggleAuthModeBtn') && (document.getElementById('toggleAuthModeBtn').textContent = isRegister ? 'Já tenho login' : 'Criar conta');
+  setAuthFeedback('');
+}
+
+function openAuthModal(mode = 'login', message = '') {
+  const modal = document.getElementById('authModal');
+  if (!modal) return;
+  setAuthMode(mode);
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (message) setAuthFeedback(message, 'warn');
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('authModal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+async function ensureAuth(onSuccess, message = 'Faça login para continuar') {
+  if (state.currentUser) {
+    onSuccess?.();
+    return true;
+  }
+  state.pendingAction = onSuccess || null;
+  if (document.getElementById('authModal')) openAuthModal('login', message);
+  else showToast(message);
+  return false;
+}
+
+function persistUserSession(user, token = '') {
+  state.currentUser = user;
+  state.authToken = token || state.authToken || '';
+  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+  if (state.authToken) localStorage.setItem(STORAGE_KEYS.token, state.authToken);
+  updateHeaderUserUI();
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const submitBtn = document.getElementById('authSubmitBtn');
+  const email = document.getElementById('authEmail')?.value.trim();
+  const password = document.getElementById('authPassword')?.value.trim();
+  const name = document.getElementById('authName')?.value.trim();
+  const type = document.getElementById('authType')?.value || 'comprador';
+
+  if (!email || !password || (state.authMode === 'register' && !name)) {
+    setAuthFeedback('Preencha os campos obrigatórios.', 'error');
+    return;
+  }
+
+  const originalText = submitBtn?.textContent;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Carregando...';
+  }
+  setAuthFeedback('');
+
+  try {
+    if (state.authMode === 'login') {
+      let userData = null;
+      let token = '';
+      try {
+        const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, senha: password }) });
+        token = result.token || '';
+        userData = { ...result.user, email: result.user?.email || email, name: result.user?.name || result.user?.nome || email, type: result.user?.type || result.user?.tipo || 'comprador' };
+      } catch (_e) {
+        const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
+        const local = users.find((u) => u.email === email && u.password === password);
+        if (!local) throw new Error('Credenciais inválidas.');
+        userData = { id_usuario: local.id_usuario, email: local.email, name: local.name, type: local.type };
+      }
+      persistUserSession(userData, token);
+      setAuthFeedback('Login realizado com sucesso.', 'success');
+      showToast('Bem-vindo de volta!');
+    } else {
+      let created = false;
+      try {
+        await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ nome: name, email, senha: password, tipo: type }) });
+        created = true;
+      } catch (_e) {
+        const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
+        if (users.some((u) => u.email === email)) throw new Error('E-mail já cadastrado.');
+        users.push({ id_usuario: Date.now(), name, email, password, type });
+        localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
+      }
+      setAuthFeedback(created ? 'Conta criada via API. Faça login.' : 'Conta criada localmente. Faça login.', 'success');
+      setAuthMode('login');
+      document.getElementById('authEmail') && (document.getElementById('authEmail').value = email);
+      document.getElementById('authPassword') && (document.getElementById('authPassword').value = '');
+      return;
+    }
+
+    closeAuthModal();
+    const pending = state.pendingAction;
+    state.pendingAction = null;
+    pending?.();
+  } catch (error) {
+    setAuthFeedback(error.message || 'Não foi possível autenticar.', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  }
+}
+
+function addToCart(id, options = {}) {
+  if (!state.currentUser && !options.skipAuth) {
+    return ensureAuth(() => addToCart(id, { skipAuth: true }), 'Faça login para continuar');
+  }
+  const item = state.cart.find((x) => Number(x.id) === Number(id));
+  if (item) item.qty += 1; else state.cart.push({ id: Number(id), qty: 1 });
+  saveSessionState();
+  renderCart();
   showToast('Produto adicionado ao carrinho.');
 }
 
 function toggleWish(id) {
-  let w = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]');
-  w = w.includes(Number(id)) ? w.filter((x) => x !== Number(id)) : [...w, Number(id)];
-  localStorage.setItem(STORAGE_KEYS.wishlist, JSON.stringify(w));
+  state.wishlist = state.wishlist.includes(Number(id)) ? state.wishlist.filter((x) => x !== Number(id)) : [...state.wishlist, Number(id)];
+  saveSessionState();
+  renderWishlist();
   showToast('Favoritos atualizados.');
 }
 
+function toggleCart(open = true) {
+  const drawer = document.getElementById('cartDrawer');
+  if (!drawer) return;
+  drawer.classList.toggle('open', open);
+}
+
+function toggleWishlist(open = true) {
+  const drawer = document.getElementById('wishlistDrawer');
+  if (!drawer) return;
+  drawer.classList.toggle('open', open);
+}
+
+function toggleCheckout(open = true) {
+  const modal = document.getElementById('checkoutModal');
+  if (!modal) return;
+  modal.classList.toggle('open', open);
+}
+
 function handleGlobalClick(e) {
+  const quickAdd = e.target.closest('.add-to-cart');
+  if (quickAdd?.dataset.id) addToCart(Number(quickAdd.dataset.id));
   const action = e.target.closest('[data-action]');
   if (action) {
     const id = Number(action.dataset.id);
     if (action.dataset.action === 'cart') addToCart(id);
     if (action.dataset.action === 'wish') toggleWish(id);
+    if (action.dataset.action === 'increase-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty += 1; saveSessionState(); renderCart(); }
+    if (action.dataset.action === 'decrease-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty -= 1; state.cart = state.cart.filter((x) => x.qty > 0); saveSessionState(); renderCart(); }
+    if (action.dataset.action === 'remove-cart') { state.cart = state.cart.filter((x) => Number(x.id) !== id); saveSessionState(); renderCart(); }
     if (action.dataset.action === 'delete-product') deleteProduct(id);
     if (action.dataset.action === 'toggle-active') quickUpdateProduct(id, (p) => ({ ...p, ativo: !p.ativo }));
     if (action.dataset.action === 'toggle-promo') quickUpdateProduct(id, (p) => ({ ...p, promocaoAtiva: !p.promocaoAtiva, desconto: p.desconto || 10 }));
@@ -386,22 +653,63 @@ function setupFilters() {
 }
 
 function loadSession() {
-  state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]');
-  state.wishlist = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]');
+  state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]').map((i) => ({ id: Number(i.id), qty: Number(i.qty || 1) }));
+  state.wishlist = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]').map(Number);
   state.currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.user) || 'null');
   state.authToken = localStorage.getItem(STORAGE_KEYS.token) || '';
   state.localReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localReviews) || '{}');
 }
 
 function setupAuthUi() {
-  document.getElementById('sellerMenuBtn')?.addEventListener('click', () => (window.location.href = 'vender.html'));
+  const accountDropdown = document.getElementById('accountDropdown');
+  const accountArea = document.querySelector('.account-area');
+
   document.getElementById('openAuthBtn')?.addEventListener('click', () => {
-    if (state.currentUser) return;
-    const fakeSeller = confirm('Login rápido: OK=vendedor / Cancel=comprador');
-    state.currentUser = { id_usuario: Date.now(), name: fakeSeller ? 'Vendedor Demo' : 'Comprador Demo', email: fakeSeller ? 'seller@sportx.com' : 'buyer@sportx.com', type: fakeSeller ? 'vendedor' : 'comprador' };
-    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(state.currentUser));
-    showToast('Sessão local iniciada.');
+    if (state.currentUser) accountDropdown?.classList.toggle('open');
+    else openAuthModal('login');
   });
+  document.getElementById('sellerMenuBtn')?.addEventListener('click', () => (window.location.href = 'vender.html'));
+  document.getElementById('logoutBtn')?.addEventListener('click', () => {
+    state.currentUser = null;
+    state.authToken = '';
+    localStorage.removeItem(STORAGE_KEYS.user);
+    localStorage.removeItem(STORAGE_KEYS.token);
+    accountDropdown?.classList.remove('open');
+    updateHeaderUserUI();
+    showToast('Você saiu da conta.');
+  });
+  document.getElementById('closeAuthBtn')?.addEventListener('click', closeAuthModal);
+  document.getElementById('authModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'authModal') closeAuthModal();
+  });
+  document.getElementById('authForm')?.addEventListener('submit', handleAuthSubmit);
+  document.getElementById('toggleAuthModeBtn')?.addEventListener('click', () => setAuthMode(state.authMode === 'login' ? 'register' : 'login'));
+  document.querySelectorAll('[data-auth-mode]').forEach((tab) => tab.addEventListener('click', () => setAuthMode(tab.dataset.authMode)));
+
+  document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
+  document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
+  document.getElementById('checkoutOpenBtn')?.addEventListener('click', () => ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra'));
+  document.getElementById('finishOrderBtn')?.addEventListener('click', () => {
+    if (!state.currentUser) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
+    if (!state.cart.length) return showToast('Seu carrinho está vazio.');
+    showToast('Pedido confirmado com sucesso.');
+    state.cart = [];
+    saveSessionState();
+    renderCart();
+    toggleCheckout(false);
+  });
+  document.getElementById('addAllWishlistBtn')?.addEventListener('click', () => {
+    ensureAuth(() => {
+      state.wishlist.forEach((id) => addToCart(id, { skipAuth: true }));
+      toggleWishlist(false);
+    }, 'Faça login para continuar');
+  });
+
+  document.addEventListener('click', (event) => {
+    if (accountArea && accountDropdown && !accountArea.contains(event.target)) accountDropdown.classList.remove('open');
+  });
+  updateHeaderUserUI();
+  setAuthMode('login');
 }
 
 async function init() {
@@ -410,6 +718,8 @@ async function init() {
   setupFilters();
   setupAuthUi();
   document.addEventListener('click', handleGlobalClick);
+  renderCart();
+  renderWishlist();
 
   const page = document.body.dataset.page;
   if (page === 'home') renderHome();
@@ -426,3 +736,6 @@ async function init() {
 document.addEventListener('DOMContentLoaded', init);
 window.addToCart = addToCart;
 window.toggleWish = toggleWish;
+window.toggleCart = toggleCart;
+window.toggleWishlist = toggleWishlist;
+window.toggleCheckout = toggleCheckout;
