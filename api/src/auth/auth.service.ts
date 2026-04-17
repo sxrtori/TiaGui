@@ -27,6 +27,12 @@ export class AuthService {
         nome: usuario.nome,
         email: usuario.email,
         tipo_usuario: usuario.tipo_usuario,
+        cpf: usuario.cpf,
+        data_nascimento: usuario.data_nascimento,
+        vendedor_bloqueado: usuario.vendedor_bloqueado,
+        media_avaliacao_vendedor: usuario.media_avaliacao_vendedor,
+        total_avaliacoes_vendedor: usuario.total_avaliacoes_vendedor,
+        motivo_bloqueio: usuario.motivo_bloqueio,
         data_criacao: usuario.data_criacao,
       },
     };

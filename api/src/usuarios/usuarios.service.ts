@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -51,8 +52,13 @@ export class UsuariosService {
       throw new ConflictException('Email já cadastrado');
     }
 
+    if (createUsuarioDto.tipo_usuario === 'vendedor') {
+      this.validateSellerEligibility(createUsuarioDto.cpf, createUsuarioDto.data_nascimento);
+    }
+
     const usuario = this.usuarioRepository.create({
       ...createUsuarioDto,
+      cpf: this.normalizeCpf(createUsuarioDto.cpf),
       senha: this.hashPassword(createUsuarioDto.senha),
       email: createUsuarioDto.email.toLowerCase(),
       tipo_usuario: createUsuarioDto.tipo_usuario ?? 'cliente',
@@ -67,6 +73,15 @@ export class UsuariosService {
 
     if (!usuario || !this.verifyPassword(senha, usuario.senha)) {
       throw new UnauthorizedException('Email ou senha inválidos');
+    }
+
+    if (usuario.tipo_usuario === 'vendedor') {
+      this.validateSellerEligibility(usuario.cpf, usuario.data_nascimento);
+      if (usuario.vendedor_bloqueado) {
+        throw new UnauthorizedException(
+          usuario.motivo_bloqueio || 'Conta de vendedor bloqueada por baixa avaliação',
+        );
+      }
     }
 
     return usuario;
@@ -92,8 +107,16 @@ export class UsuariosService {
       }
     }
 
+    if ((updateUsuarioDto.tipo_usuario || usuario.tipo_usuario) === 'vendedor') {
+      this.validateSellerEligibility(
+        updateUsuarioDto.cpf ?? usuario.cpf,
+        updateUsuarioDto.data_nascimento ?? usuario.data_nascimento,
+      );
+    }
+
     Object.assign(usuario, {
       ...updateUsuarioDto,
+      cpf: this.normalizeCpf(updateUsuarioDto.cpf ?? usuario.cpf),
       email: updateUsuarioDto.email?.toLowerCase() ?? usuario.email,
       senha: updateUsuarioDto.senha
         ? this.hashPassword(updateUsuarioDto.senha)
@@ -137,5 +160,59 @@ export class UsuariosService {
   private sanitizeUser(usuario: Usuario): Omit<Usuario, 'senha'> {
     const { senha, ...safeUser } = usuario;
     return safeUser;
+  }
+
+  private normalizeCpf(cpf?: string): string | undefined {
+    if (!cpf) return undefined;
+    const digits = String(cpf).replace(/\D/g, '');
+    if (!digits) return undefined;
+    return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  }
+
+  private validateSellerEligibility(cpf?: string, birthDate?: string | Date): void {
+    const normalizedCpf = String(cpf || '').replace(/\D/g, '');
+    if (!normalizedCpf) {
+      throw new BadRequestException('CPF é obrigatório para vendedor');
+    }
+    if (!this.isValidCpf(normalizedCpf)) {
+      throw new BadRequestException('CPF inválido para vendedor');
+    }
+
+    if (!birthDate) {
+      throw new BadRequestException('Data de nascimento é obrigatória para vendedor');
+    }
+
+    const birth = new Date(birthDate);
+    if (Number.isNaN(birth.getTime())) {
+      throw new BadRequestException('Data de nascimento inválida');
+    }
+
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDelta = today.getMonth() - birth.getMonth();
+    if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
+      age -= 1;
+    }
+
+    if (age < 18) {
+      throw new BadRequestException('É necessário ter 18 anos ou mais para vender');
+    }
+  }
+
+  private isValidCpf(rawCpf: string): boolean {
+    const cpf = rawCpf.replace(/\D/g, '');
+    if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
+
+    const calcDigit = (base: string, factor: number) => {
+      const sum = base
+        .split('')
+        .reduce((acc, char) => acc + Number(char) * factor--, 0);
+      const mod = (sum * 10) % 11;
+      return mod === 10 ? 0 : mod;
+    };
+
+    const first = calcDigit(cpf.slice(0, 9), 10);
+    const second = calcDigit(cpf.slice(0, 10), 11);
+    return first === Number(cpf[9]) && second === Number(cpf[10]);
   }
 }

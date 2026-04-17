@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, In, Repository } from 'typeorm';
 import { Produto } from './entities/produto.entity';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
+import { Usuario } from '../usuarios/entities/usuario.entity';
 
 const CATEGORIA_ALIAS: Record<string, number> = {
   masculino: 1,
@@ -20,6 +21,8 @@ export class ProdutosService {
   constructor(
     @InjectRepository(Produto)
     private readonly produtoRepository: Repository<Produto>,
+    @InjectRepository(Usuario)
+    private readonly usuarioRepository: Repository<Usuario>,
   ) {}
 
   async findAll(filters?: {
@@ -79,6 +82,9 @@ export class ProdutosService {
   }
 
   async create(createProdutoDto: CreateProdutoDto): Promise<Produto> {
+    if (createProdutoDto.id_vendedor) {
+      await this.assertSellerCanSell(createProdutoDto.id_vendedor);
+    }
     const produto = this.produtoRepository.create({
       ...createProdutoDto,
       slug: createProdutoDto.slug || this.slugify(createProdutoDto.nome),
@@ -88,6 +94,10 @@ export class ProdutosService {
 
   async update(id: number, updateProdutoDto: UpdateProdutoDto): Promise<Produto> {
     const produto = await this.findOne(id);
+    const sellerId = updateProdutoDto.id_vendedor || produto.id_vendedor;
+    if (sellerId) {
+      await this.assertSellerCanSell(sellerId);
+    }
     Object.assign(produto, {
       ...updateProdutoDto,
       slug:
@@ -121,5 +131,19 @@ export class ProdutosService {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '')
       .slice(0, 180);
+  }
+
+  private async assertSellerCanSell(id_vendedor: number): Promise<void> {
+    const seller = await this.usuarioRepository.findOne({
+      where: { id_usuario: id_vendedor },
+    });
+    if (!seller || seller.tipo_usuario !== 'vendedor') {
+      throw new ForbiddenException('Somente contas de vendedor podem anunciar');
+    }
+    if (seller.vendedor_bloqueado) {
+      throw new ForbiddenException(
+        seller.motivo_bloqueio || 'Vendedor bloqueado por média de avaliação inferior a 4.0',
+      );
+    }
   }
 }

@@ -12,6 +12,7 @@ import {
 import { AvaliacoesService } from './avaliacoes.service';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
 import { UpdateAvaliacaoDto } from './dto/update-avaliacao.dto';
+import { CreateAvaliacaoVendedorDto } from './dto/create-avaliacao-vendedor.dto';
 
 @Controller('avaliacoes')
 export class AvaliacoesController {
@@ -25,6 +26,16 @@ export class AvaliacoesController {
   @Get('produto/:id_produto')
   listByProduct(@Param('id_produto', ParseIntPipe) id_produto: number) {
     return this.avaliacoesService.listByProduct(id_produto);
+  }
+
+  @Post('vendedor')
+  createSeller(@Body() dto: CreateAvaliacaoVendedorDto) {
+    return this.avaliacoesService.createSellerReview(dto);
+  }
+
+  @Get('vendedor/:id_vendedor')
+  listBySeller(@Param('id_vendedor', ParseIntPipe) id_vendedor: number) {
+    return this.avaliacoesService.listBySeller(id_vendedor);
   }
 
   @Patch(':id')
