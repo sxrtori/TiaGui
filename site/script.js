@@ -10,7 +10,8 @@ const STORAGE_KEYS = {
   localReviews: 'sportx-local-reviews',
   localSellerReviews: 'sportx-local-seller-reviews',
   orders: 'sportx-local-orders',
-  productsUpdated: 'sportx-products-updated'
+  productsUpdated: 'sportx-products-updated',
+  giftCards: 'sportx-local-gift-cards'
 };
 
 const CATEGORY_MAP = { Masculino: 1, Feminino: 2, 'Calçados': 3, Acessórios: 4, Esportes: 5 };
@@ -49,7 +50,22 @@ const DEFAULT_KITS = [
   },
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, localSellerReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [], shippingOrigin: null, shippingZipCode: '' };
+const state = {
+  cart: [],
+  wishlist: [],
+  currentUser: null,
+  authToken: '',
+  products: [],
+  localReviews: {},
+  localSellerReviews: {},
+  authMode: 'login',
+  pendingAction: null,
+  shippingOption: null,
+  shippingOptions: [],
+  shippingOrigin: null,
+  shippingZipCode: '',
+  giftCards: [],
+};
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -69,8 +85,21 @@ function showToast(message) {
 async function apiRequest(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (state.authToken) headers.Authorization = `Bearer ${state.authToken}`;
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error('API error');
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  } catch (_networkError) {
+    throw new Error('Não foi possível conectar ao servidor. Tente novamente em instantes.');
+  }
+  if (!response.ok) {
+    let apiMessage = '';
+    try {
+      const data = await response.json();
+      apiMessage = data?.message;
+      if (Array.isArray(apiMessage)) apiMessage = apiMessage[0];
+    } catch (_e) {}
+    throw new Error(apiMessage || 'Não foi possível concluir esta ação no momento.');
+  }
   if (response.status === 204) return null;
   return response.json();
 }
@@ -249,6 +278,15 @@ async function calculateShipping(cep, subtotal, items = []) {
   });
 }
 
+function normalizeUiErrorMessage(error, fallback = 'Não foi possível concluir esta ação.') {
+  const message = String(error?.message || '').trim();
+  if (!message) return fallback;
+  if (message.toLowerCase().includes('failed to fetch') || message.toLowerCase().includes('networkerror')) {
+    return 'Estamos com instabilidade de conexão no momento. Tente novamente em instantes.';
+  }
+  return message;
+}
+
 function renderShippingOptions(result, { selectable = false, selectedId = '', inputName = 'checkoutShippingOption' } = {}) {
   const options = result?.opcoes || [];
   if (!options.length) return '<small>Sem opções disponíveis para este CEP.</small>';
@@ -271,8 +309,23 @@ function renderShippingOptions(result, { selectable = false, selectedId = '', in
 
 async function fetchAddressByCep(cep) {
   const cleanCep = sanitizeCep(cep);
-  if (cleanCep.length !== 8) throw new Error('CEP inválido');
-  return apiRequest(`/frete/cep/${cleanCep}`);
+  if (cleanCep.length !== 8) throw new Error('CEP inválido. Use 8 dígitos.');
+  try {
+    return await apiRequest(`/frete/cep/${cleanCep}`);
+  } catch (_apiError) {
+    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    if (!response.ok) throw new Error('Não foi possível consultar o CEP agora.');
+    const data = await response.json();
+    if (data?.erro) throw new Error('CEP não encontrado.');
+    return {
+      cep: data.cep || formatCep(cleanCep),
+      rua: data.logradouro || '',
+      bairro: data.bairro || '',
+      cidade: data.localidade || '',
+      estado: String(data.uf || '').toUpperCase(),
+      complemento: data.complemento || '',
+    };
+  }
 }
 
 async function loadProducts() {
@@ -509,13 +562,13 @@ async function renderProductPage() {
     const cep = (document.getElementById('freteCep').value || '').trim();
     const cleanCep = sanitizeCep(cep);
     if (!cleanCep) return showToast('Informe um CEP para calcular o frete.');
-    if (cleanCep.length !== 8) return showToast('CEP inválido. Use o formato 00000-000.');
+    if (cleanCep.length !== 8) return showToast('CEP inválido. Digite 8 números.');
     const resultEl = document.getElementById('freteResult');
     if (button) {
       button.disabled = true;
       button.textContent = 'Calculando...';
     }
-    resultEl.innerHTML = '<small>Consultando endereço e frete real...</small>';
+    resultEl.innerHTML = '<small>Consultando endereço e opções de frete...</small>';
     try {
       const shippingItems = [{
         sku: String(p.id),
@@ -554,7 +607,7 @@ async function renderProductPage() {
         });
       });
     } catch (error) {
-      resultEl.innerHTML = `<small>${error?.message || 'Não foi possível calcular o frete agora.'}</small>`;
+      resultEl.innerHTML = `<small>${normalizeUiErrorMessage(error, 'Não foi possível calcular o frete no momento.')}</small>`;
     } finally {
       if (button) {
         button.disabled = false;
@@ -900,7 +953,7 @@ async function refreshCheckoutShippingOptions() {
   }
 
   const requestId = ++checkoutShippingRequestId;
-  list.innerHTML = '<small>Buscando opções reais de frete...</small>';
+  list.innerHTML = '<small>Buscando opções de frete...</small>';
   try {
     const result = await calculateShipping(cleanCep, subtotal, shippingItems);
     if (requestId !== checkoutShippingRequestId) return;
@@ -925,11 +978,11 @@ async function refreshCheckoutShippingOptions() {
     refreshShippingSelectionUi();
     updateCartTotals();
     return;
-  } catch (_error) {
+  } catch (error) {
     if (requestId !== checkoutShippingRequestId) return;
     state.shippingOption = null;
     state.shippingOptions = [];
-    list.innerHTML = '<small>Não foi possível buscar o frete para este CEP.</small>';
+    list.innerHTML = `<small>${normalizeUiErrorMessage(error, 'Não foi possível buscar o frete para este CEP.')}</small>`;
     updateCartTotals();
   }
 }
@@ -1274,6 +1327,96 @@ function setupFilters() {
   });
 }
 
+const GIFT_CARD_MIN_VALUE = 30;
+const GIFT_CARD_MAX_VALUE = 2000;
+
+function setGiftCardFeedback(message, type = '') {
+  const feedback = document.getElementById('giftFeedback');
+  if (!feedback) return;
+  feedback.textContent = message || '';
+  feedback.className = `auth-feedback ${type}`.trim();
+}
+
+function resolveGiftCardValue() {
+  const selected = document.getElementById('giftValue')?.value || '99';
+  const customField = document.getElementById('giftCustom');
+  const customValue = Number(customField?.value || 0);
+  if (selected === 'custom') return Number(customValue || 0);
+  return Number(selected);
+}
+
+function syncGiftCardValueUi() {
+  const valueSelect = document.getElementById('giftValue');
+  const customField = document.getElementById('giftCustom');
+  if (!valueSelect || !customField) return;
+  const isCustom = valueSelect.value === 'custom';
+  customField.disabled = !isCustom;
+  customField.required = isCustom;
+  if (!isCustom) customField.value = '';
+}
+
+async function handleGiftCardPurchase() {
+  const button = document.getElementById('giftBtn');
+  const name = (document.getElementById('giftName')?.value || '').trim();
+  const email = (document.getElementById('giftEmail')?.value || '').trim().toLowerCase();
+  const message = (document.getElementById('giftMessage')?.value || '').trim();
+  const selectedValue = document.getElementById('giftValue')?.value || '99';
+  const finalValue = resolveGiftCardValue();
+
+  if (!name || !email) {
+    setGiftCardFeedback('Preencha nome e e-mail para continuar.', 'error');
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setGiftCardFeedback('Informe um e-mail válido para o destinatário.', 'error');
+    return;
+  }
+  if (selectedValue === 'custom' && !finalValue) {
+    setGiftCardFeedback('Para valor personalizado, informe um valor válido.', 'error');
+    return;
+  }
+  if (finalValue < GIFT_CARD_MIN_VALUE || finalValue > GIFT_CARD_MAX_VALUE) {
+    setGiftCardFeedback(`O valor do gift card deve ficar entre ${currency(GIFT_CARD_MIN_VALUE)} e ${currency(GIFT_CARD_MAX_VALUE)}.`, 'error');
+    return;
+  }
+
+  const originalText = button?.textContent || 'Comprar gift card';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Indo para pagamento...';
+  }
+  setGiftCardFeedback('Processando checkout do gift card...', 'warn');
+
+  try {
+    const checkout = await apiRequest('/gift-cards/checkout', {
+      method: 'POST',
+      body: JSON.stringify({
+        destinatarioNome: name,
+        destinatarioEmail: email,
+        valor: Math.round(finalValue),
+        mensagem: message,
+      }),
+    });
+
+    setGiftCardFeedback('Pagamento iniciado. Confirmando pagamento...', 'warn');
+    const confirmation = await apiRequest(`/gift-cards/${checkout.giftCard.id}/confirmar-pagamento`, {
+      method: 'POST',
+    });
+    state.giftCards.unshift(confirmation.giftCard);
+    localStorage.setItem(STORAGE_KEYS.giftCards, JSON.stringify(state.giftCards));
+
+    setGiftCardFeedback(`Gift card comprado com sucesso! Código ${confirmation.giftCard.codigo} enviado por e-mail.`, 'success');
+    showToast('Gift card pago e enviado com sucesso.');
+  } catch (error) {
+    setGiftCardFeedback(normalizeUiErrorMessage(error, 'Não foi possível concluir a compra do gift card.'), 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
 function loadSession() {
   state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]').map((i) => ({ id: Number(i.id), qty: Number(i.qty || 1), selectedSize: i.selectedSize || '', selectedColor: i.selectedColor || '', selectedColorHex: i.selectedColorHex || '' }));
   state.wishlist = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]').map(Number);
@@ -1282,6 +1425,7 @@ function loadSession() {
   state.authToken = localStorage.getItem(STORAGE_KEYS.token) || '';
   state.localReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localReviews) || '{}');
   state.localSellerReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localSellerReviews) || '{}');
+  state.giftCards = JSON.parse(localStorage.getItem(STORAGE_KEYS.giftCards) || '[]');
 }
 
 function setupAuthUi() {
@@ -1317,6 +1461,12 @@ function setupAuthUi() {
   document.getElementById('sellerProductOriginCep')?.addEventListener('input', (event) => {
     event.target.value = formatCep(event.target.value);
   });
+  document.getElementById('giftValue')?.addEventListener('change', syncGiftCardValueUi);
+  document.getElementById('giftBtn')?.addEventListener('click', handleGiftCardPurchase);
+  document.getElementById('giftCustom')?.addEventListener('input', () => {
+    setGiftCardFeedback('');
+  });
+  syncGiftCardValueUi();
 
   document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
   document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
@@ -1346,8 +1496,8 @@ function setupAuthUi() {
       }
       state.shippingZipCode = cleanCep;
       refreshCheckoutShippingOptions();
-    } catch (_error) {
-      showToast('CEP não encontrado para auto preenchimento.');
+    } catch (error) {
+      showToast(normalizeUiErrorMessage(error, 'CEP não encontrado para auto preenchimento.'));
     }
   });
   refreshCheckoutShippingOptions();

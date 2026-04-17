@@ -10,6 +10,7 @@ import { AvaliacoesModule } from './avaliacoes/avaliacoes.module';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 import { FreteModule } from './frete/frete.module';
+import { GiftCardsModule } from './gift-cards/gift-cards.module';
 
 @Module({
   imports: [
@@ -29,7 +30,10 @@ import { FreteModule } from './frete/frete.module';
         database: configService.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
         synchronize: false,
-        ssl: configService.get<string>('DB_SSL') === 'false' ? false : { rejectUnauthorized: false },
+        ssl:
+          configService.get<string>('DB_SSL') === 'false'
+            ? false
+            : { rejectUnauthorized: false },
       }),
     }),
 
@@ -40,10 +44,13 @@ import { FreteModule } from './frete/frete.module';
     PagamentosModule,
     AvaliacoesModule,
     FreteModule,
+    GiftCardsModule,
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(SecurityHeadersMiddleware, RateLimitMiddleware).forRoutes('*');
+    consumer
+      .apply(SecurityHeadersMiddleware, RateLimitMiddleware)
+      .forRoutes('*');
   }
 }
