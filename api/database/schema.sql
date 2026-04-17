@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS usuario (
     email VARCHAR(150) UNIQUE NOT NULL,
     senha VARCHAR(255) NOT NULL,
     tipo_usuario VARCHAR(20) DEFAULT 'cliente',
+    cpf VARCHAR(14) UNIQUE,
+    data_nascimento DATE,
+    vendedor_bloqueado BOOLEAN DEFAULT FALSE,
+    media_avaliacao_vendedor DECIMAL(3,2) DEFAULT 0,
+    total_avaliacoes_vendedor INT DEFAULT 0,
+    motivo_bloqueio TEXT,
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT tipo_usuario_check CHECK (tipo_usuario IN ('cliente', 'admin', 'vendedor'))
 );
@@ -236,6 +242,16 @@ CREATE TABLE IF NOT EXISTS avaliacao (
     CONSTRAINT comentario_minimo CHECK (char_length(comentario) >= 10 OR comentario IS NULL)
 );
 
+CREATE TABLE IF NOT EXISTS avaliacao_vendedor (
+    id_avaliacao_vendedor SERIAL PRIMARY KEY,
+    id_usuario INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
+    id_vendedor INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
+    nota INT NOT NULL CHECK (nota BETWEEN 1 AND 5),
+    comentario TEXT NOT NULL,
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_avaliacao_vendedor UNIQUE (id_usuario, id_vendedor)
+);
+
 -- =========================================
 -- ÍNDICES
 -- =========================================
@@ -273,6 +289,7 @@ CREATE INDEX IF NOT EXISTS idx_favorito_produto ON favorito(id_produto);
 
 CREATE INDEX IF NOT EXISTS idx_avaliacao_produto ON avaliacao(id_produto);
 CREATE INDEX IF NOT EXISTS idx_avaliacao_usuario ON avaliacao(id_usuario);
+CREATE INDEX IF NOT EXISTS idx_avaliacao_vendedor_vendedor ON avaliacao_vendedor(id_vendedor);
 
 -- =========================================
 -- FUNÇÕES / TRIGGERS

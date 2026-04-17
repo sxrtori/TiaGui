@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   users: 'sportx-local-users',
   localProducts: 'sportx-local-products',
   localReviews: 'sportx-local-reviews',
+  localSellerReviews: 'sportx-local-seller-reviews',
   orders: 'sportx-local-orders',
   productsUpdated: 'sportx-products-updated'
 };
@@ -48,7 +49,7 @@ const DEFAULT_KITS = [
   },
 ];
 
-const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [], shippingOrigin: null, shippingZipCode: '' };
+const state = { cart: [], wishlist: [], currentUser: null, authToken: '', products: [], localReviews: {}, localSellerReviews: {}, authMode: 'login', pendingAction: null, shippingOption: null, shippingOptions: [], shippingOrigin: null, shippingZipCode: '' };
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -134,6 +135,39 @@ function formatCep(value = '') {
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
+function sanitizeCpf(value = '') {
+  return String(value).replace(/\D/g, '').slice(0, 11);
+}
+
+function formatCpf(value = '') {
+  const digits = sanitizeCpf(value);
+  return digits
+    .replace(/^(\d{3})(\d)/, '$1.$2')
+    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1-$2');
+}
+
+function isValidCpf(value = '') {
+  const cpf = sanitizeCpf(value);
+  if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
+  const calcDigit = (base, factor) => {
+    const sum = base.split('').reduce((acc, digit) => acc + Number(digit) * factor--, 0);
+    const mod = (sum * 10) % 11;
+    return mod === 10 ? 0 : mod;
+  };
+  return calcDigit(cpf.slice(0, 9), 10) === Number(cpf[9]) && calcDigit(cpf.slice(0, 10), 11) === Number(cpf[10]);
+}
+
+function getAgeFromBirthDate(value = '') {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return -1;
+  const now = new Date();
+  let age = now.getFullYear() - date.getFullYear();
+  const month = now.getMonth() - date.getMonth();
+  if (month < 0 || (month === 0 && now.getDate() < date.getDate())) age -= 1;
+  return age;
+}
+
 function getCheckoutAddress() {
   return {
     cep: formatCep(document.getElementById('checkoutCep')?.value || ''),
@@ -186,6 +220,23 @@ async function calculateShipping(cep, subtotal) {
   });
 }
 
+function renderShippingOptions(result, { selectable = false, selectedId = '' } = {}) {
+  const options = result?.opcoes || [];
+  if (!options.length) return '<small>Sem opções disponíveis para este CEP.</small>';
+  return options.map((option, index) => {
+    const selected = selectedId ? selectedId === option.id : index === 0;
+    if (selectable) {
+      return `
+        <label class="shipping-option selectable ${option.destaque || ''} ${selected ? 'is-selected' : ''}">
+          <input type="radio" name="checkoutShippingOption" value="${option.id}" ${selected ? 'checked' : ''}/>
+          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</div>
+        </label>
+      `;
+    }
+    return `<article class="shipping-option ${option.destaque || ''}"><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${result?.origem ? `<small>Origem: ${result.origem.cidade}/${result.origem.estado}</small>` : ''}</article>`;
+  }).join('');
+}
+
 async function fetchAddressByCep(cep) {
   const cleanCep = sanitizeCep(cep);
   if (cleanCep.length !== 8) throw new Error('CEP inválido');
@@ -213,9 +264,11 @@ function getProductById(id) { return state.products.find((p) => Number(p.id) ===
 
 function renderProductCard(p) {
   const hasDiscount = Number(p.desconto) > 0;
+  const wished = state.wishlist.includes(Number(p.id));
   return `<article class="product-card" data-product-link="${p.id}">
     <div class="product-media">
       <img src="${p.imagem}" alt="${p.nome}" loading="lazy" />
+      <button class="wishlist-heart ${wished ? 'active' : ''}" data-action="wish" data-id="${p.id}" aria-label="Favoritar produto">❤</button>
       ${p.badgeLancamento ? '<span class="new-tag">Novo</span>' : ''}
       ${hasDiscount ? `<span class="discount-tag">-${p.desconto}%</span>` : ''}
     </div>
@@ -320,6 +373,15 @@ async function renderProductPage() {
   const root = document.getElementById('productPageRoot');
   if (!p || !root) return;
   const { reviews, media, total } = await getReviews(id);
+  let sellerStats = { media: 0, total: 0, reviews: [] };
+  try { sellerStats = await apiRequest(`/avaliacoes/vendedor/${p.vendedorId}`); } catch (_e) {
+    const localSeller = (state.localSellerReviews[p.vendedorId] || []);
+    sellerStats = {
+      total: localSeller.length,
+      media: localSeller.length ? Number((localSeller.reduce((sum, review) => sum + Number(review.nota || 0), 0) / localSeller.length).toFixed(2)) : 0,
+      reviews: localSeller
+    };
+  }
   const related = state.products.filter((x) => x.id !== p.id && (x.categoria === p.categoria || x.modalidade === p.modalidade)).slice(0, 4);
   const buyTogether = state.products.filter((x) => x.id !== p.id).slice(0, 3);
 
@@ -338,6 +400,7 @@ async function renderProductPage() {
         <p class="lead">${p.categoria} • ${p.marca} • ${p.modalidade}</p>
         <div class="product-rating-row">⭐ ${media || p.notaMedia} <span>(${total || p.totalAvaliacoes} avaliações)</span></div>
         <div class="product-price-box"><strong>${currency(discountedPrice(p))}</strong>${Number(p.desconto)>0 ? `<span class="old-price">${currency(p.preco)}</span><span class="discount-tag">-${p.desconto}%</span>` : ''}</div>
+        <div class="seller-rating-row">Vendedor ⭐ ${Number(sellerStats.media || 0).toFixed(1)} <span>(${sellerStats.total || 0} avaliações)</span></div>
 
         <div class="variation-block">
           <p class="variation-title">Cor selecionada: <strong id="selectedColorName">${selectedColor.nome}</strong></p>
@@ -349,7 +412,7 @@ async function renderProductPage() {
           <div class="size-grid" id="sizeGrid">${p.tamanhos.map((size, idx) => `<button class="size-btn ${idx === 0 && size.disponivel ? 'active' : ''}" ${size.disponivel ? '' : 'disabled'} data-size="${size.label}">${size.label}</button>`).join('')}</div>
         </div>
 
-        <div class="product-actions-row"><button class="btn btn-primary" id="addToCartProductBtn" data-id="${p.id}">Adicionar ao carrinho</button><button class="btn btn-light" data-action="wish" data-id="${p.id}">Favoritar</button></div>
+        <div class="product-actions-row"><button class="btn btn-primary" id="addToCartProductBtn" data-id="${p.id}">Adicionar ao carrinho</button><button class="wishlist-heart-lg ${state.wishlist.includes(Number(p.id)) ? 'active' : ''}" id="productWishBtn" data-action="wish" data-id="${p.id}" aria-label="Favoritar produto">❤</button></div>
 
         <div class="benefits-list">
           <div>🔒 Compra 100% segura</div>
@@ -366,6 +429,9 @@ async function renderProductPage() {
     <section class="section"><h3>Descrição detalhada</h3><p>${p.descricao}</p></section>
     <section class="section"><h3>Avaliações dos compradores</h3><div id="reviewList">${reviews.length ? reviews.map((r) => `<article class="review-item"><header><strong>${r.usuario}</strong><span>⭐ ${r.nota}</span></header><p>${r.comentario}</p><small>${new Date(r.data_criacao || r.data || Date.now()).toLocaleDateString('pt-BR')}</small><button class="btn-link" data-report-review="${r.id_avaliacao || ''}">Denunciar</button></article>`).join('') : '<p>Ainda sem avaliações.</p>'}</div>
       <form id="reviewForm" class="seller-form-pro"><div class="input-group"><label>Nota</label><select id="reviewRate" required><option value="">Selecione</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></div><div class="input-group"><label>Comentário</label><textarea id="reviewText" required></textarea></div><button class="btn btn-primary" type="submit">Enviar avaliação</button></form>
+    </section>
+    <section class="section"><h3>Avaliar vendedor</h3>
+      <form id="sellerReviewForm" class="seller-form-pro"><div class="input-group"><label>Nota do vendedor</label><select id="sellerReviewRate" required><option value="">Selecione</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></div><div class="input-group"><label>Comentário</label><textarea id="sellerReviewText" required></textarea></div><button class="btn btn-primary" type="submit">Enviar avaliação do vendedor</button></form>
     </section>
     <section class="section"><div class="related-head"><small>Complete seu look</small><h3>Você também poderá gostar</h3></div><div class="products-carousel related-carousel">${related.map(renderProductCard).join('')}</div></section>
     <section class="section"><h3>Compre junto</h3><div class="products-carousel related-carousel">${buyTogether.map(renderProductCard).join('')}</div></section>
@@ -403,6 +469,7 @@ async function renderProductPage() {
     const color = p.cores[currentColorIndex] || selectedColor;
     addToCart(p.id, { selectedSize: currentSize, selectedColor: color.nome, selectedColorHex: color.hex, skipAuth: false });
   });
+  document.getElementById('productWishBtn')?.addEventListener('click', () => toggleWish(p.id));
 
   document.getElementById('freteCep')?.addEventListener('input', (event) => {
     event.target.value = formatCep(event.target.value);
@@ -417,8 +484,7 @@ async function renderProductPage() {
     resultEl.innerHTML = '<small>Calculando...</small>';
     try {
       const result = await calculateShipping(cep, discountedPrice(p));
-      const options = result.opcoes || [];
-      resultEl.innerHTML = options.map((op) => `<article class="shipping-option ${op.destaque || ''}"><strong>${op.nome}</strong><span>${currency(op.valor)} • ${op.prazoMin} a ${op.prazoMax} dias úteis • ${op.tipo || 'Padrão'}</span><small>Origem: ${result.origem?.cidade || 'São Paulo'}/${result.origem?.estado || 'SP'}</small></article>`).join('');
+      resultEl.innerHTML = renderShippingOptions(result, { selectable: false });
     } catch (_e) {
       resultEl.innerHTML = '<small>CEP inválido ou indisponível. Verifique e tente novamente.</small>';
     }
@@ -450,6 +516,27 @@ async function renderProductPage() {
     try { await apiRequest(`/avaliacoes/${reviewId}/denunciar`, { method: 'PATCH' }); } catch (_e) {}
     showToast('Avaliação denunciada.');
   }));
+
+  document.getElementById('sellerReviewForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.currentUser) return showToast('Faça login para avaliar o vendedor.');
+    const comentario = document.getElementById('sellerReviewText').value.trim();
+    const nota = Number(document.getElementById('sellerReviewRate').value);
+    if (!comentario) return showToast('Comentário não pode ser vazio.');
+    if (!nota) return showToast('Selecione a nota do vendedor.');
+    const payload = { id_usuario: Number(state.currentUser.id_usuario || state.currentUser.id), id_vendedor: Number(p.vendedorId), nota, comentario };
+    try {
+      await apiRequest('/avaliacoes/vendedor', { method: 'POST', body: JSON.stringify(payload) });
+    } catch (_error) {
+      const list = state.localSellerReviews[p.vendedorId] || [];
+      if (list.some((review) => Number(review.id_usuario) === payload.id_usuario)) return showToast('Você já avaliou esse vendedor.');
+      list.unshift({ ...payload, data: new Date().toISOString() });
+      state.localSellerReviews[p.vendedorId] = list;
+      localStorage.setItem(STORAGE_KEYS.localSellerReviews, JSON.stringify(state.localSellerReviews));
+    }
+    showToast('Avaliação do vendedor enviada.');
+    renderProductPage();
+  });
 }
 
 function renderPromotionsPage() {
@@ -462,11 +549,26 @@ function getSellerProducts() {
   return state.products.filter((p) => Number(p.vendedorId || 0) === Number(state.currentUser.id_usuario) || p.source.startsWith('seller'));
 }
 
+function getSellerAccountStatus() {
+  if (!state.currentUser || state.currentUser.type !== 'vendedor') return { blocked: false, average: 0, total: 0, reason: '' };
+  const average = Number(state.currentUser.media_avaliacao_vendedor || 0);
+  const total = Number(state.currentUser.total_avaliacoes_vendedor || 0);
+  const blocked = Boolean(state.currentUser.vendedor_bloqueado) || (total > 0 && average < 4);
+  return {
+    blocked,
+    average,
+    total,
+    reason: state.currentUser.motivo_bloqueio || (blocked ? 'Média do vendedor abaixo de 4.0' : ''),
+  };
+}
+
 function renderMyProductsPage() {
   const target = document.getElementById('myProductsGrid');
   if (!target) return;
   const items = getSellerProducts();
-  target.innerHTML = items.length ? items.map((p) => `<article class="product-card seller-product-card"><div class="product-media"><img src="${p.imagem}" alt="${p.nome}"></div><div class="product-body"><small>${p.marca} • ${p.categoria}</small><h3>${p.nome}</h3><div class="product-meta"><div class="price-wrap"><strong>${currency(discountedPrice(p))}</strong>${Number(p.desconto) > 0 ? `<span class="old-price">${currency(p.preco)}</span>` : ''}</div><span class="product-rating-row">Estoque: ${p.estoque}</span></div><p class="seller-status">Status: ${p.ativo ? 'Ativo' : 'Inativo'} • ${p.promocaoAtiva ? 'Promoção ativa' : 'Sem promoção'}</p><div class="product-actions"><a class="btn-card btn-light" href="editar-produto.html?id=${p.id}">Editar</a><button class="btn-card btn-light" data-action="toggle-active" data-id="${p.id}">${p.ativo ? 'Desativar' : 'Ativar'}</button><button class="btn-card btn-light" data-action="toggle-promo" data-id="${p.id}">${p.promocaoAtiva ? 'Remover promoção' : 'Colocar promoção'}</button><button class="btn-card btn-dark" data-action="delete-product" data-id="${p.id}">Excluir</button></div></div></article>`).join('') : '<p>Você ainda não publicou produtos.</p>';
+  const sellerStatus = getSellerAccountStatus();
+  const statusHtml = `<div class="seller-status-panel ${sellerStatus.blocked ? 'blocked' : ''}"><strong>Status do vendedor:</strong> ${sellerStatus.blocked ? 'Bloqueado para vender' : 'Ativo para vender'} • Média: ${sellerStatus.average.toFixed(1)} (${sellerStatus.total} avaliações) ${sellerStatus.reason ? `<small>${sellerStatus.reason}</small>` : ''}</div>`;
+  target.innerHTML = `${statusHtml}${items.length ? items.map((p) => `<article class="product-card seller-product-card"><div class="product-media"><img src="${p.imagem}" alt="${p.nome}"></div><div class="product-body"><small>${p.marca} • ${p.categoria}</small><h3>${p.nome}</h3><div class="product-meta"><div class="price-wrap"><strong>${currency(discountedPrice(p))}</strong>${Number(p.desconto) > 0 ? `<span class="old-price">${currency(p.preco)}</span>` : ''}</div><span class="product-rating-row">Estoque: ${p.estoque}</span></div><p class="seller-status">Status: ${p.ativo ? 'Ativo' : 'Inativo'} • ${p.promocaoAtiva ? 'Promoção ativa' : 'Sem promoção'}</p><div class="product-actions"><a class="btn-card btn-light" href="editar-produto.html?id=${p.id}">Editar</a><button class="btn-card btn-light" data-action="toggle-active" data-id="${p.id}">${p.ativo ? 'Desativar' : 'Ativar'}</button><button class="btn-card btn-light" data-action="toggle-promo" data-id="${p.id}">${p.promocaoAtiva ? 'Remover promoção' : 'Colocar promoção'}</button><button class="btn-card btn-dark" data-action="delete-product" data-id="${p.id}">Excluir</button></div></div></article>`).join('') : '<p>Você ainda não publicou produtos.</p>'}`;
 }
 
 function fillEditForm() {
@@ -482,6 +584,8 @@ function fillEditForm() {
 async function submitSellerProduct(event) {
   event.preventDefault();
   if (!state.currentUser || state.currentUser.type !== 'vendedor') return showToast('Faça login como vendedor.');
+  const sellerStatus = getSellerAccountStatus();
+  if (sellerStatus.blocked) return showToast(sellerStatus.reason || 'Conta de vendedor bloqueada para anunciar.');
   const isEdit = document.body.dataset.page === 'edit-product';
   const id = isEdit ? Number(getQuery('id')) : Date.now();
 
@@ -560,15 +664,17 @@ function updateHeaderUserUI() {
   if (!openAuthBtn) return;
   if (state.currentUser) {
     const name = state.currentUser.name || state.currentUser.nome || state.currentUser.email || 'Minha conta';
+    const userType = state.currentUser.type || state.currentUser.tipo_usuario || 'comprador';
+    const isSeller = userType === 'vendedor';
     const avatar = String(name).trim().charAt(0).toUpperCase() || 'U';
     accountLabel && (accountLabel.textContent = name);
-    accountSubLabel && (accountSubLabel.textContent = state.currentUser.type === 'vendedor' ? 'Conta vendedor' : 'Conta ativa');
+    accountSubLabel && (accountSubLabel.textContent = isSeller ? (state.currentUser.vendedor_bloqueado ? 'Vendedor bloqueado' : 'Conta vendedor') : 'Conta ativa');
     accountDropdownName && (accountDropdownName.textContent = `Olá, ${name}`);
-    accountDropdownType && (accountDropdownType.textContent = state.currentUser.type === 'vendedor' ? 'Painel do vendedor' : 'Conta de comprador');
+    accountDropdownType && (accountDropdownType.textContent = isSeller ? 'Painel do vendedor' : 'Conta de comprador');
     accountIcon && (accountIcon.textContent = avatar);
     accountDropdownAvatar && (accountDropdownAvatar.textContent = avatar);
-    sellerMenuBtn && (sellerMenuBtn.style.display = state.currentUser.type === 'vendedor' ? 'block' : 'none');
-    sellerProductsMenuBtn && (sellerProductsMenuBtn.style.display = state.currentUser.type === 'vendedor' ? 'block' : 'none');
+    sellerMenuBtn && (sellerMenuBtn.style.display = isSeller ? 'block' : 'none');
+    sellerProductsMenuBtn && (sellerProductsMenuBtn.style.display = isSeller ? 'block' : 'none');
     openAuthBtn.classList.add('is-authenticated');
   } else {
     accountLabel && (accountLabel.textContent = 'Entrar');
@@ -700,6 +806,8 @@ function setAuthMode(mode) {
   document.getElementById('authTitle') && (document.getElementById('authTitle').textContent = isRegister ? 'Criar conta' : 'Entrar');
   document.getElementById('nameField')?.classList.toggle('hidden', !isRegister);
   document.getElementById('accountTypeField')?.classList.toggle('hidden', !isRegister);
+  document.getElementById('sellerCpfField')?.classList.toggle('hidden', !isRegister || document.getElementById('authType')?.value !== 'vendedor');
+  document.getElementById('sellerBirthField')?.classList.toggle('hidden', !isRegister || document.getElementById('authType')?.value !== 'vendedor');
   document.getElementById('authSubmitBtn') && (document.getElementById('authSubmitBtn').textContent = isRegister ? 'Criar conta' : 'Entrar');
   document.getElementById('toggleAuthModeBtn') && (document.getElementById('toggleAuthModeBtn').textContent = isRegister ? 'Já tenho login' : 'Criar conta');
   setAuthFeedback('');
@@ -733,7 +841,7 @@ async function ensureAuth(onSuccess, message = 'Faça login para continuar') {
 }
 
 function persistUserSession(user, token = '') {
-  state.currentUser = user;
+  state.currentUser = { ...user, type: user?.type || user?.tipo_usuario || user?.tipo || 'comprador' };
   state.authToken = token || state.authToken || '';
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
   if (state.authToken) localStorage.setItem(STORAGE_KEYS.token, state.authToken);
@@ -747,10 +855,23 @@ async function handleAuthSubmit(event) {
   const password = document.getElementById('authPassword')?.value.trim();
   const name = document.getElementById('authName')?.value.trim();
   const type = document.getElementById('authType')?.value || 'comprador';
+  const cpf = formatCpf(document.getElementById('authCpf')?.value || '');
+  const birthDate = document.getElementById('authBirthDate')?.value || '';
 
   if (!email || !password || (state.authMode === 'register' && !name)) {
     setAuthFeedback('Preencha os campos obrigatórios.', 'error');
     return;
+  }
+
+  if (state.authMode === 'register' && type === 'vendedor') {
+    if (!isValidCpf(cpf)) {
+      setAuthFeedback('CPF inválido para vendedor.', 'error');
+      return;
+    }
+    if (getAgeFromBirthDate(birthDate) < 18) {
+      setAuthFeedback('É necessário ter 18 anos ou mais para vender.', 'error');
+      return;
+    }
   }
 
   const originalText = submitBtn?.textContent;
@@ -767,11 +888,16 @@ async function handleAuthSubmit(event) {
       try {
         const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, senha: password }) });
         token = result.token || '';
-        userData = { ...result.user, email: result.user?.email || email, name: result.user?.name || result.user?.nome || email, type: result.user?.type || result.user?.tipo || 'comprador' };
+        userData = { ...result.user, email: result.user?.email || email, name: result.user?.name || result.user?.nome || email, type: result.user?.type || result.user?.tipo_usuario || result.user?.tipo || 'comprador' };
       } catch (_e) {
         const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
         const local = users.find((u) => u.email === email && u.password === password);
         if (!local) throw new Error('Credenciais inválidas.');
+        if (local.type === 'vendedor') {
+          if (!isValidCpf(local.cpf || '')) throw new Error('Conta de vendedor inválida: CPF obrigatório.');
+          if (getAgeFromBirthDate(local.birthDate) < 18) throw new Error('Conta de vendedor inválida: idade mínima 18 anos.');
+          if (local.vendedorBloqueado) throw new Error(local.motivoBloqueio || 'Conta de vendedor bloqueada.');
+        }
         userData = { id_usuario: local.id_usuario, email: local.email, name: local.name, type: local.type };
       }
       persistUserSession(userData, token);
@@ -780,12 +906,12 @@ async function handleAuthSubmit(event) {
     } else {
       let created = false;
       try {
-        await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ nome: name, email, senha: password, tipo: type }) });
+        await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ nome: name, email, senha: password, tipo_usuario: type === 'comprador' ? 'cliente' : type, cpf: type === 'vendedor' ? cpf : undefined, data_nascimento: type === 'vendedor' ? birthDate : undefined }) });
         created = true;
       } catch (_e) {
         const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
         if (users.some((u) => u.email === email)) throw new Error('E-mail já cadastrado.');
-        users.push({ id_usuario: Date.now(), name, email, password, type });
+        users.push({ id_usuario: Date.now(), name, email, password, type, cpf: type === 'vendedor' ? cpf : '', birthDate: type === 'vendedor' ? birthDate : '' });
         localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
       }
       setAuthFeedback(created ? 'Conta criada via API. Faça login.' : 'Conta criada localmente. Faça login.', 'success');
@@ -824,7 +950,18 @@ function toggleWish(id) {
   state.wishlist = state.wishlist.includes(Number(id)) ? state.wishlist.filter((x) => x !== Number(id)) : [...state.wishlist, Number(id)];
   saveSessionState();
   renderWishlist();
+  updateWishlistVisualState();
   showToast('Favoritos atualizados.');
+}
+
+function updateWishlistVisualState() {
+  document.querySelectorAll('[data-action="wish"][data-id]').forEach((button) => {
+    const wished = state.wishlist.includes(Number(button.dataset.id));
+    button.classList.toggle('active', wished);
+  });
+  if (document.body.dataset.page === 'home') renderHome();
+  if (document.body.dataset.page === 'category') renderCategoryPage();
+  if (document.body.dataset.page === 'promotions') renderPromotionsPage();
 }
 
 function toggleCart(open = true) {
@@ -873,9 +1010,18 @@ function handleGlobalClick(e) {
       addToCart(id, { skipAuth: true });
       toggleWishlistMiniModal(true);
     }
-    if (action.dataset.action === 'delete-product') deleteProduct(id);
-    if (action.dataset.action === 'toggle-active') quickUpdateProduct(id, (p) => ({ ...p, ativo: !p.ativo }));
-    if (action.dataset.action === 'toggle-promo') quickUpdateProduct(id, (p) => ({ ...p, promocaoAtiva: !p.promocaoAtiva, desconto: p.desconto || 10 }));
+    if (action.dataset.action === 'toggle-active') {
+      if (getSellerAccountStatus().blocked) return showToast('Conta de vendedor bloqueada para vender.');
+      quickUpdateProduct(id, (p) => ({ ...p, ativo: !p.ativo }));
+    }
+    if (action.dataset.action === 'toggle-promo') {
+      if (getSellerAccountStatus().blocked) return showToast('Conta de vendedor bloqueada para vender.');
+      quickUpdateProduct(id, (p) => ({ ...p, promocaoAtiva: !p.promocaoAtiva, desconto: p.desconto || 10 }));
+    }
+    if (action.dataset.action === 'delete-product') {
+      if (getSellerAccountStatus().blocked) return showToast('Conta de vendedor bloqueada para vender.');
+      deleteProduct(id);
+    }
   }
   const card = e.target.closest('[data-product-link]');
   if (card && !e.target.closest('button,a')) window.location.href = `produto.html?id=${card.dataset.productLink}`;
@@ -928,9 +1074,11 @@ function setupFilters() {
 function loadSession() {
   state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]').map((i) => ({ id: Number(i.id), qty: Number(i.qty || 1), selectedSize: i.selectedSize || '', selectedColor: i.selectedColor || '', selectedColorHex: i.selectedColorHex || '' }));
   state.wishlist = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]').map(Number);
-  state.currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.user) || 'null');
+  const storedUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.user) || 'null');
+  state.currentUser = storedUser ? { ...storedUser, type: storedUser.type || storedUser.tipo_usuario || storedUser.tipo || 'comprador' } : null;
   state.authToken = localStorage.getItem(STORAGE_KEYS.token) || '';
   state.localReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localReviews) || '{}');
+  state.localSellerReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localSellerReviews) || '{}');
 }
 
 function setupAuthUi() {
@@ -959,6 +1107,10 @@ function setupAuthUi() {
   document.getElementById('authForm')?.addEventListener('submit', handleAuthSubmit);
   document.getElementById('toggleAuthModeBtn')?.addEventListener('click', () => setAuthMode(state.authMode === 'login' ? 'register' : 'login'));
   document.querySelectorAll('[data-auth-mode]').forEach((tab) => tab.addEventListener('click', () => setAuthMode(tab.dataset.authMode)));
+  document.getElementById('authType')?.addEventListener('change', () => setAuthMode(state.authMode));
+  document.getElementById('authCpf')?.addEventListener('input', (event) => {
+    event.target.value = formatCpf(event.target.value);
+  });
 
   document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
   document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
@@ -1006,12 +1158,7 @@ function setupAuthUi() {
       state.shippingOption = state.shippingOptions[0] || null;
       state.shippingOrigin = result.origem || null;
       state.shippingZipCode = sanitizeCep(cep);
-      list.innerHTML = state.shippingOptions.map((option, index) => `
-        <label class="shipping-option selectable ${option.destaque || ''} ${index === 0 ? 'is-selected' : ''}">
-          <input type="radio" name="checkoutShippingOption" value="${option.id}" ${index === 0 ? 'checked' : ''}/>
-          <div><strong>${option.nome}</strong><span>${currency(option.valor)} • ${option.prazoMin} a ${option.prazoMax} dias úteis • ${option.tipo || 'Padrão'}</span>${state.shippingOrigin ? `<small>Origem: ${state.shippingOrigin.cidade}/${state.shippingOrigin.estado}</small>` : ''}</div>
-        </label>
-      `).join('');
+      list.innerHTML = renderShippingOptions(result, { selectable: true, selectedId: state.shippingOption?.id || '' });
       refreshShippingSelectionUi();
       updateCartTotals();
     } catch (_error) {
