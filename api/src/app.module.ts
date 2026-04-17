@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProdutosModule } from './produtos/produtos.module';
@@ -7,6 +7,9 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { AuthModule } from './auth/auth.module';
 import { PagamentosModule } from './pagamentos/pagamentos.module';
 import { AvaliacoesModule } from './avaliacoes/avaliacoes.module';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
+import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { FreteModule } from './frete/frete.module';
 
 @Module({
   imports: [
@@ -26,9 +29,7 @@ import { AvaliacoesModule } from './avaliacoes/avaliacoes.module';
         database: configService.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
         synchronize: false,
-        ssl: {
-          rejectUnauthorized: false,
-        },
+        ssl: configService.get<string>('DB_SSL') === 'false' ? false : { rejectUnauthorized: false },
       }),
     }),
 
@@ -38,6 +39,11 @@ import { AvaliacoesModule } from './avaliacoes/avaliacoes.module';
     AuthModule,
     PagamentosModule,
     AvaliacoesModule,
+    FreteModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(SecurityHeadersMiddleware, RateLimitMiddleware).forRoutes('*');
+  }
+}

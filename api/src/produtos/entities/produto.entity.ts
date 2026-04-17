@@ -38,6 +38,9 @@ export class Produto {
   @Column({ length: 80, nullable: true })
   marca?: string;
 
+  @Column({ length: 180, nullable: true, unique: true })
+  slug?: string;
+
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   desconto: number;
 

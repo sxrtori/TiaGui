@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { LoginDto } from './dto/login.dto';
 import { generateAccessToken } from './token.util';
+import { CreateUsuarioDto } from '../usuarios/dto/create-usuario.dto';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +19,7 @@ export class AuthService {
 
     return {
       access_token,
+      token: access_token,
       token_type: 'Bearer',
       expires_in: 60 * 60 * 8,
       user: {
@@ -27,6 +29,14 @@ export class AuthService {
         tipo_usuario: usuario.tipo_usuario,
         data_criacao: usuario.data_criacao,
       },
+    };
+  }
+
+  async register(payload: CreateUsuarioDto) {
+    const user = await this.usuariosService.create(payload);
+    return {
+      message: 'Usuário criado com sucesso',
+      user,
     };
   }
 }
