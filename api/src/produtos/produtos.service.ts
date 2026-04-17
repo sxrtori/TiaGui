@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ILike, Repository } from 'typeorm';
 import { Produto } from './entities/produto.entity';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
@@ -12,7 +12,15 @@ export class ProdutosService {
     private readonly produtoRepository: Repository<Produto>,
   ) {}
 
-  async findAll(): Promise<Produto[]> {
+  async findAll(searchTerm?: string): Promise<Produto[]> {
+    if (searchTerm?.trim()) {
+      const term = `%${searchTerm.trim()}%`;
+      return this.produtoRepository.find({
+        where: [{ nome: ILike(term) }, { descricao: ILike(term) }, { genero: ILike(term) }],
+        order: { id_produto: 'ASC' },
+      });
+    }
+
     return this.produtoRepository.find({
       order: { id_produto: 'ASC' },
     });

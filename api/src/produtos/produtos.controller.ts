@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ProdutosService } from './produtos.service';
 import { CreateProdutoDto } from './dto/create-produto.dto';
@@ -17,8 +18,8 @@ export class ProdutosController {
   constructor(private readonly produtosService: ProdutosService) {}
 
   @Get()
-  findAll() {
-    return this.produtosService.findAll();
+  findAll(@Query('q') q?: string) {
+    return this.produtosService.findAll(q);
   }
 
   @Get(':id')

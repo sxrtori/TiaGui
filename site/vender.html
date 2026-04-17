@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SportX | Vender produto</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="section">
+    <div class="container" style="max-width:740px;">
+      <h1 style="margin-bottom:18px;">Cadastrar produto para venda</h1>
+      <p class="lead" style="margin-bottom:20px;">Preencha os dados abaixo para publicar um novo produto.</p>
+
+      <form id="sellerProductForm" class="auth-form panel" style="padding:20px; display:grid; gap:14px;">
+        <div class="input-group">
+          <label>Nome do produto</label>
+          <input type="text" id="sellerProductName" required />
+        </div>
+        <div class="input-group">
+          <label>Descrição</label>
+          <textarea id="sellerProductDescription" rows="4" required></textarea>
+        </div>
+        <div class="input-group">
+          <label>Preço</label>
+          <input type="number" id="sellerProductPrice" min="0" step="0.01" required />
+        </div>
+        <div class="input-group">
+          <label>Imagem (URL)</label>
+          <input type="url" id="sellerProductImage" required />
+        </div>
+        <div class="input-group">
+          <label>Estoque</label>
+          <input type="number" id="sellerProductStock" min="0" value="1" required />
+        </div>
+        <button class="btn btn-primary" type="submit">Publicar produto</button>
+      </form>
+    </div>
+  </main>
+
+  <div class="toast" id="toast">Ação realizada</div>
+  <script src="script.js"></script>
+</body>
+</html>
