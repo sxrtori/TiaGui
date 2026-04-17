@@ -56,6 +56,7 @@
             <button class="account-menu-item">💬 Atendimento</button>
             <button class="account-menu-item">📄 Meu cadastro</button>
             <button class="account-menu-item">♡ Meus favoritos</button>
+            <button class="account-menu-item" id="sellerMenuBtn" style="display:none;">🏪 Vender produto</button>
             <button class="account-menu-item danger" id="logoutBtn">↩ Sair</button>
           </div>
         </div>
@@ -444,27 +445,27 @@
           <div class="form-grid">
             <div class="input-group">
               <label>Nome completo</label>
-              <input type="text" placeholder="Seu nome" />
+              <input type="text" id="checkoutName" placeholder="Seu nome" />
             </div>
 
             <div class="input-group">
               <label>E-mail</label>
-              <input type="email" placeholder="voce@email.com" />
+              <input type="email" id="checkoutEmail" placeholder="voce@email.com" />
             </div>
 
             <div class="input-group full">
               <label>Endereço</label>
-              <input type="text" placeholder="Rua, número e bairro" />
+              <input type="text" id="checkoutAddress" placeholder="Rua, número e bairro" />
             </div>
 
             <div class="input-group">
               <label>Cidade</label>
-              <input type="text" placeholder="Sua cidade" />
+              <input type="text" id="checkoutCity" placeholder="Sua cidade" />
             </div>
 
             <div class="input-group">
               <label>CEP</label>
-              <input type="text" placeholder="00000-000" />
+              <input type="text" id="checkoutCep" placeholder="00000-000" />
             </div>
 
             <div class="input-group">
@@ -483,6 +484,12 @@
                 <option>2x sem juros</option>
                 <option>3x sem juros</option>
               </select>
+            </div>
+            <div class="input-group full">
+              <label class="checkbox-label">
+                <input type="checkbox" id="savePaymentInfo" />
+                Salvar dados de pagamento para próximas compras
+              </label>
             </div>
           </div>
         </div>
@@ -548,6 +555,8 @@
             <option value="vendedor">Vendedor</option>
           </select>
         </div>
+
+        <label class="checkbox-label"><input type="checkbox" id="rememberSession" checked /> Permanecer conectado</label>
 
         <button type="submit" class="btn btn-primary full-width" id="authSubmitBtn">Criar conta</button>
         <button type="button" class="btn btn-light full-width" id="toggleAuthModeBtn">Já tenho login</button>

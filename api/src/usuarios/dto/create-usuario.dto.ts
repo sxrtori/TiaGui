@@ -1,4 +1,11 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateUsuarioDto {
   @IsString()
@@ -14,5 +21,6 @@ export class CreateUsuarioDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['cliente', 'admin', 'vendedor'])
   tipo_usuario?: string;
 }

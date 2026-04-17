@@ -1,3 +1,5 @@
+const API_BASE_URL = window.SPORTX_API_URL || 'http://localhost:3000';
+
 const products = [
   {
     id: 1,
@@ -277,8 +279,10 @@ let cashbackBalance = 0;
 let activeFilter = '';
 let activeFolder = '';
 let authMode = 'register';
-let currentUser = JSON.parse(localStorage.getItem('sportx-current-user') || 'null');
-let users = JSON.parse(localStorage.getItem('sportx-users') || '[]');
+let allProducts = [];
+let currentUser = JSON.parse(localStorage.getItem('sportx-current-user') || sessionStorage.getItem('sportx-current-user') || 'null');
+let users = [];
+let rememberSession = true;
 
 const currency = (value) =>
   value.toLocaleString('pt-BR', {
@@ -327,8 +331,62 @@ function loadState() {
 }
 
 function saveUsers() {
-  localStorage.setItem('sportx-users', JSON.stringify(users));
-  localStorage.setItem('sportx-current-user', JSON.stringify(currentUser));
+  if (rememberSession) {
+    localStorage.setItem('sportx-current-user', JSON.stringify(currentUser));
+    sessionStorage.removeItem('sportx-current-user');
+  } else {
+    sessionStorage.setItem('sportx-current-user', JSON.stringify(currentUser));
+    localStorage.removeItem('sportx-current-user');
+  }
+}
+
+function clearSessionStorage() {
+  localStorage.removeItem('sportx-current-user');
+  sessionStorage.removeItem('sportx-current-user');
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message || 'Erro na API');
+  }
+
+  return response.status === 204 ? null : response.json();
+}
+
+async function loadProductsFromApi(searchTerm = '') {
+  try {
+    const query = searchTerm ? `?q=${encodeURIComponent(searchTerm)}` : '';
+    const dbProducts = await apiRequest(`/produtos${query}`);
+    if (Array.isArray(dbProducts) && dbProducts.length) {
+      allProducts = dbProducts.map((product) => ({
+        id: product.id_produto,
+        title: product.nome,
+        category: product.genero || 'Esportes',
+        group: product.genero || 'Esportes',
+        sport: product.genero || 'Treino',
+        price: Number(product.preco || 0),
+        rating: 4.7,
+        cashback: 3,
+        isNew: false,
+        image: product.imagem || 'https://via.placeholder.com/400x400?text=Produto',
+        description: product.descricao || 'Produto esportivo',
+        sizes: product.numeracao || 'Único',
+        gender: product.genero || 'Unissex',
+        folders: ['/produtos', '/esportes']
+      }));
+      return;
+    }
+  } catch (error) {
+    console.warn('API indisponível para produtos. Usando catálogo local.', error);
+  }
+
+  allProducts = productsWithDetails;
 }
 
 function closeAccountDropdown() {
@@ -367,6 +425,7 @@ function updateAccountButton() {
   const accountDropdownName = document.getElementById('accountDropdownName');
   const accountDropdownType = document.getElementById('accountDropdownType');
   const logoutBtn = document.getElementById('logoutBtn');
+  const sellerMenuBtn = document.getElementById('sellerMenuBtn');
 
   if (!accountLabel || !accountIcon) return;
 
@@ -392,6 +451,7 @@ function updateAccountButton() {
     }
 
     if (logoutBtn) logoutBtn.style.display = 'block';
+    if (sellerMenuBtn) sellerMenuBtn.style.display = currentUser.type === 'vendedor' ? 'block' : 'none';
   } else {
     accountLabel.textContent = 'Entrar / Cadastrar';
     if (accountSubLabel) accountSubLabel.textContent = 'Acesse sua conta';
@@ -400,12 +460,13 @@ function updateAccountButton() {
     if (accountDropdownName) accountDropdownName.textContent = 'Olá';
     if (accountDropdownType) accountDropdownType.textContent = 'Entre para ver sua conta';
     if (logoutBtn) logoutBtn.style.display = 'none';
+    if (sellerMenuBtn) sellerMenuBtn.style.display = 'none';
   }
 }
 
 function logoutUser() {
   currentUser = null;
-  saveUsers();
+  clearSessionStorage();
   updateAccountButton();
   closeAccountDropdown();
   showToast('Você saiu da sua conta.');
@@ -532,7 +593,9 @@ function renderProducts() {
 
   const term = searchInput.value.trim().toLowerCase();
 
-  const filteredProducts = productsWithDetails.filter((product) => {
+  const sourceProducts = allProducts.length ? allProducts : productsWithDetails;
+
+  const filteredProducts = sourceProducts.filter((product) => {
     const fields = [product.title, product.category, product.group, product.sport].join(' ').toLowerCase();
     const categoryMatch = !activeFilter || product.category === activeFilter || product.group === activeFilter || product.sport === activeFilter || activeFilter === 'Esportes';
     const folderMatch = !activeFolder || product.folders?.includes(activeFolder);
@@ -843,66 +906,73 @@ function updateAuthUI() {
   document.getElementById('accountTypeField').style.display = isRegister ? 'block' : 'none';
 }
 
-function handleAuthSubmit(event) {
+async function handleAuthSubmit(event) {
   event.preventDefault();
 
   const email = document.getElementById('authEmail').value.trim().toLowerCase();
   const password = document.getElementById('authPassword').value.trim();
+  const remember = document.getElementById('rememberSession')?.checked ?? true;
+  rememberSession = remember;
 
   if (!email || !password) {
     showToast('Preencha email e senha.');
     return;
   }
 
-  if (authMode === 'register') {
-    const name = document.getElementById('authName').value.trim();
-    const type = document.getElementById('authType').value;
+  try {
+    if (authMode === 'register') {
+      const name = document.getElementById('authName').value.trim();
+      const type = document.getElementById('authType').value;
 
-    if (!name) {
-      showToast('Preencha seu nome.');
-      return;
+      if (!name) {
+        showToast('Preencha seu nome.');
+        return;
+      }
+
+      const newUser = await apiRequest('/usuarios', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: name,
+          email,
+          senha: password,
+          tipo_usuario: type === 'comprador' ? 'cliente' : type,
+        }),
+      });
+
+      currentUser = {
+        id_usuario: newUser.id_usuario,
+        name: newUser.nome,
+        email: newUser.email,
+        type: newUser.tipo_usuario,
+      };
+
+      saveUsers();
+      updateAccountButton();
+      showToast(`Conta de ${currentUser.type} criada com sucesso.`);
+    } else {
+      const user = await apiRequest('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, senha: password }),
+      });
+
+      currentUser = {
+        id_usuario: user.id_usuario,
+        name: user.nome,
+        email: user.email,
+        type: user.tipo_usuario,
+      };
+
+      saveUsers();
+      updateAccountButton();
+      showToast('Login realizado com sucesso.');
     }
 
-    const emailAlreadyExists = users.some((user) => user.email === email);
-
-    if (emailAlreadyExists) {
-      showToast('Esse e-mail já está cadastrado.');
-      return;
-    }
-
-    const newUser = {
-      name,
-      email,
-      password,
-      type
-    };
-
-    users.push(newUser);
-    currentUser = newUser;
-    saveUsers();
-    updateAccountButton();
-
-    showToast(`Conta de ${type} criada com sucesso.`);
-  } else {
-    const foundUser = users.find(
-      (user) => user.email === email && user.password === password
-    );
-
-    if (!foundUser) {
-      showToast('Email ou senha incorretos.');
-      return;
-    }
-
-    currentUser = foundUser;
-    saveUsers();
-    updateAccountButton();
-
-    showToast('Login realizado com sucesso.');
+    document.getElementById('authForm').reset();
+    toggleAuthModal(false);
+    openAccountDropdown();
+  } catch (error) {
+    showToast(error.message || 'Não foi possível autenticar.');
   }
-
-  document.getElementById('authForm').reset();
-  toggleAuthModal(false);
-  openAccountDropdown();
 }
 
 function scrollCarousel(direction) {
@@ -938,6 +1008,7 @@ function registerAccountPanelEvents() {
   const openAuthBtn = document.getElementById('openAuthBtn');
   const accountDropdown = document.getElementById('accountDropdown');
   const logoutBtn = document.getElementById('logoutBtn');
+  const sellerMenuBtn = document.getElementById('sellerMenuBtn');
 
   openAuthBtn?.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -968,12 +1039,21 @@ function registerEvents() {
   document.getElementById('cartToggle')?.addEventListener('click', () => toggleCart(true));
   document.getElementById('wishlistToggle')?.addEventListener('click', () => toggleWishlist(true));
 
-  document.getElementById('checkoutOpenBtn')?.addEventListener('click', () => {
+  document.getElementById('checkoutOpenBtn')?.addEventListener('click', async () => {
+    if (!currentUser) {
+      showToast('Faça login para finalizar a compra.');
+      updateAuthUI();
+      toggleAuthModal(true);
+      return;
+    }
+
     if (!cart.length) {
       showToast('Adicione itens ao carrinho antes de finalizar.');
       return;
     }
 
+    prefillCheckoutUserData();
+    await loadSavedPaymentPreference();
     renderCheckout();
     toggleCheckout(true);
   });
@@ -1003,25 +1083,67 @@ function registerEvents() {
     });
   });
 
-  document.getElementById('searchInput')?.addEventListener('input', renderProducts);
+  document.getElementById('searchInput')?.addEventListener('input', async (event) => {
+    const term = event.target.value.trim();
+    await loadProductsFromApi(term);
+    renderProducts();
+  });
 
-  document.getElementById('finishOrderBtn')?.addEventListener('click', () => {
+  document.getElementById('finishOrderBtn')?.addEventListener('click', async () => {
+    if (!currentUser) {
+      showToast('Você precisa estar logado para comprar.');
+      return;
+    }
+
     if (!cart.length) {
       showToast('Seu carrinho está vazio.');
       return;
     }
 
-    const { cashback } = cartCalculations();
-    cashbackBalance += cashback;
-    cart = [];
+    try {
+      const paymentMethod = document.getElementById('paymentMethod')?.value || 'pix';
+      const savePayment = document.getElementById('savePaymentInfo')?.checked;
 
-    saveState();
-    renderCart();
-    renderCheckout();
-    updateCounters();
-    toggleCheckout(false);
-    toggleCart(false);
-    showToast('Pedido confirmado com sucesso! Cashback creditado.');
+      let idPagamento;
+      if (savePayment) {
+        const createdPayment = await apiRequest('/pagamentos', {
+          method: 'POST',
+          body: JSON.stringify({
+            id_usuario: currentUser.id_usuario,
+            tipo: paymentMethod,
+            nome_titular: document.getElementById('checkoutName')?.value || currentUser.name,
+            ultimos_digitos: '0000',
+            bandeira: paymentMethod === 'credito' ? 'VISA' : null,
+          }),
+        });
+        idPagamento = createdPayment.id_pagamento;
+      }
+
+      const { total, cashback } = cartCalculations();
+      await apiRequest('/pedidos', {
+        method: 'POST',
+        body: JSON.stringify({
+          id_usuario: currentUser.id_usuario,
+          id_endereco: 1,
+          id_pagamento: idPagamento,
+          status: 'pendente',
+          total,
+          forma_pagamento: paymentMethod === 'credito' ? 'cartao' : paymentMethod,
+        }),
+      });
+
+      cashbackBalance += cashback;
+      cart = [];
+      saveState();
+      renderCart();
+      renderCheckout();
+      updateCounters();
+      toggleCheckout(false);
+      toggleCart(false);
+      showToast('Pedido confirmado com sucesso! Cashback creditado.');
+    } catch (error) {
+      showToast(error.message || 'Erro ao finalizar pedido.');
+    }
   });
 
   document.getElementById('giftBtn')?.addEventListener('click', () => {
@@ -1064,12 +1186,83 @@ function registerEvents() {
     if (event.target.id === 'productModal') toggleProductModal(false);
   });
 
+
+  document.getElementById('sellerMenuBtn')?.addEventListener('click', () => {
+    if (!currentUser || currentUser.type !== 'vendedor') {
+      showToast('Apenas vendedores podem acessar essa área.');
+      return;
+    }
+
+    window.open('vender.html', '_blank');
+  });
+
+  document.getElementById('sellerProductForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const sellerUser = JSON.parse(localStorage.getItem('sportx-current-user') || sessionStorage.getItem('sportx-current-user') || 'null');
+    if (!sellerUser || sellerUser.type !== 'vendedor') {
+      showToast('Faça login como vendedor para cadastrar produtos.');
+      return;
+    }
+
+    try {
+      await apiRequest('/produtos', {
+        method: 'POST',
+        body: JSON.stringify({
+          id_categoria: 1,
+          nome: document.getElementById('sellerProductName')?.value,
+          descricao: document.getElementById('sellerProductDescription')?.value,
+          preco: Number(document.getElementById('sellerProductPrice')?.value || 0),
+          estoque: Number(document.getElementById('sellerProductStock')?.value || 0),
+          imagem: document.getElementById('sellerProductImage')?.value,
+          genero: 'Esportes',
+          numeracao: 'Único',
+          ativo: true,
+        }),
+      });
+
+      showToast('Produto cadastrado com sucesso.');
+      document.getElementById('sellerProductForm')?.reset();
+    } catch (error) {
+      showToast(error.message || 'Erro ao cadastrar produto.');
+    }
+  });
+
   registerCategoryCards();
   registerAccountPanelEvents();
 }
 
-function init() {
+function prefillCheckoutUserData() {
+  if (!currentUser) return;
+  const nameField = document.getElementById('checkoutName');
+  const emailField = document.getElementById('checkoutEmail');
+  if (nameField) nameField.value = currentUser.name || '';
+  if (emailField) emailField.value = currentUser.email || '';
+}
+
+async function loadSavedPaymentPreference() {
+  if (!currentUser?.id_usuario) return;
+
+  try {
+    const savedPayments = await apiRequest(`/pagamentos/usuario/${currentUser.id_usuario}`);
+    if (!Array.isArray(savedPayments) || !savedPayments.length) return;
+
+    const useSaved = window.confirm('Encontramos um pagamento salvo. Deseja reutilizar?');
+    if (!useSaved) return;
+
+    const lastPayment = savedPayments[0];
+    const paymentMethod = document.getElementById('paymentMethod');
+    if (paymentMethod) paymentMethod.value = lastPayment.tipo || paymentMethod.value;
+    updatePaymentInstallments();
+    showToast('Dados de pagamento salvos carregados.');
+  } catch (error) {
+    console.warn('Sem pagamentos salvos.', error);
+  }
+}
+
+async function init() {
   loadState();
+  await loadProductsFromApi();
   renderProducts();
   renderLaunches();
   renderKits();
