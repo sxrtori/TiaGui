@@ -1,10 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, In, Repository } from 'typeorm';
 import { Produto } from './entities/produto.entity';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
-import { Usuario } from '../usuarios/entities/usuario.entity';
+import { InMemoryDataService } from '../storage/in-memory-data.service';
 
 const CATEGORIA_ALIAS: Record<string, number> = {
   masculino: 1,
@@ -18,12 +16,7 @@ const CATEGORIA_ALIAS: Record<string, number> = {
 
 @Injectable()
 export class ProdutosService {
-  constructor(
-    @InjectRepository(Produto)
-    private readonly produtoRepository: Repository<Produto>,
-    @InjectRepository(Usuario)
-    private readonly usuarioRepository: Repository<Usuario>,
-  ) {}
+  constructor(private readonly data: InMemoryDataService) {}
 
   async findAll(filters?: {
     q?: string;
@@ -31,80 +24,76 @@ export class ProdutosService {
     promocao?: string;
     vendedorId?: number;
   }): Promise<Produto[]> {
-    const where: any = {};
+    let products = [...this.data.products];
 
-    if (filters?.id_categoria) where.id_categoria = filters.id_categoria;
-    if (filters?.promocao === 'true') where.promocao_ativa = true;
-    if (filters?.vendedorId) where.id_vendedor = filters.vendedorId;
+    if (filters?.id_categoria) products = products.filter((item) => item.id_categoria === filters.id_categoria);
+    if (filters?.promocao === 'true') products = products.filter((item) => Boolean(item.promocao_ativa));
+    if (filters?.vendedorId) products = products.filter((item) => item.id_vendedor === filters.vendedorId);
 
     if (filters?.q?.trim()) {
-      const term = `%${filters.q.trim()}%`;
-      const categoriaByText = CATEGORIA_ALIAS[filters.q.trim().toLowerCase()];
-      const whereList = [
-        { ...where, nome: ILike(term) },
-        { ...where, descricao: ILike(term) },
-        { ...where, marca: ILike(term) },
-        { ...where, modalidade: ILike(term) },
-      ];
-
-      if (categoriaByText) {
-        whereList.push({ ...where, id_categoria: In([categoriaByText]) });
-      }
-
-      return this.produtoRepository.find({
-        where: whereList,
-        order: { created_at: 'DESC' },
+      const term = filters.q.trim().toLowerCase();
+      const categoriaByText = CATEGORIA_ALIAS[term];
+      products = products.filter((item) => {
+        const searchable = [item.nome, item.descricao, item.marca, item.modalidade]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return searchable.includes(term) || (categoriaByText ? item.id_categoria === categoriaByText : false);
       });
     }
 
-    return this.produtoRepository.find({
-      where,
-      order: { created_at: 'DESC' },
-    });
+    return products.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
   }
 
   async findOne(id: number): Promise<Produto> {
-    const produto = await this.produtoRepository.findOne({
-      where: { id_produto: id },
-    });
-
+    const produto = this.data.products.find((item) => item.id_produto === id);
     if (!produto) throw new NotFoundException('Produto não encontrado');
     return produto;
   }
 
   async findBySlug(slug: string): Promise<Produto> {
-    const produto = await this.produtoRepository.findOne({
-      where: { slug },
-    });
-
+    const produto = this.data.products.find((item) => item.slug === slug);
     if (!produto) throw new NotFoundException('Produto não encontrado');
     return produto;
   }
 
   async create(createProdutoDto: CreateProdutoDto): Promise<Produto> {
-    if (createProdutoDto.id_vendedor) {
-      await this.assertSellerCanSell(createProdutoDto.id_vendedor);
-    }
-    const produto = this.produtoRepository.create({
+    if (createProdutoDto.id_vendedor) await this.assertSellerCanSell(createProdutoDto.id_vendedor);
+
+    const produto: Produto = {
       ...createProdutoDto,
+      id_produto: this.data.nextId('product'),
       slug: createProdutoDto.slug || this.slugify(createProdutoDto.nome),
-    });
-    return this.produtoRepository.save(produto);
+      desconto: Number(createProdutoDto.desconto || 0),
+      cashback: Number(createProdutoDto.cashback || 0),
+      ativo: createProdutoDto.ativo ?? true,
+      lancamento: Boolean(createProdutoDto.lancamento),
+      promocao_ativa: Boolean(createProdutoDto.promocao_ativa),
+      origem_cep: createProdutoDto.origem_cep || '01001-000',
+      media_avaliacao: 0,
+      total_avaliacoes: 0,
+      peso_kg: Number(createProdutoDto.peso_kg || 0.3),
+      altura_cm: Number(createProdutoDto.altura_cm || 5),
+      largura_cm: Number(createProdutoDto.largura_cm || 20),
+      comprimento_cm: Number(createProdutoDto.comprimento_cm || 30),
+      created_at: new Date(),
+    } as Produto;
+
+    this.data.products.unshift(produto);
+    return produto;
   }
 
   async update(id: number, updateProdutoDto: UpdateProdutoDto): Promise<Produto> {
     const produto = await this.findOne(id);
     const sellerId = updateProdutoDto.id_vendedor || produto.id_vendedor;
-    if (sellerId) {
-      await this.assertSellerCanSell(sellerId);
-    }
+    if (sellerId) await this.assertSellerCanSell(sellerId);
+
     Object.assign(produto, {
       ...updateProdutoDto,
-      slug:
-        updateProdutoDto.slug ||
-        (updateProdutoDto.nome ? this.slugify(updateProdutoDto.nome) : produto.slug),
+      slug: updateProdutoDto.slug || (updateProdutoDto.nome ? this.slugify(updateProdutoDto.nome) : produto.slug),
     });
-    return this.produtoRepository.save(produto);
+
+    return produto;
   }
 
   async updatePromotion(id: number, promocao_ativa: boolean, desconto?: number) {
@@ -118,8 +107,9 @@ export class ProdutosService {
   }
 
   async remove(id: number): Promise<{ message: string }> {
-    const produto = await this.findOne(id);
-    await this.produtoRepository.remove(produto);
+    const index = this.data.products.findIndex((item) => item.id_produto === id);
+    if (index < 0) throw new NotFoundException('Produto não encontrado');
+    this.data.products.splice(index, 1);
     return { message: 'Produto removido com sucesso' };
   }
 
@@ -134,9 +124,7 @@ export class ProdutosService {
   }
 
   private async assertSellerCanSell(id_vendedor: number): Promise<void> {
-    const seller = await this.usuarioRepository.findOne({
-      where: { id_usuario: id_vendedor },
-    });
+    const seller = this.data.users.find((user) => user.id_usuario === id_vendedor);
     if (!seller || seller.tipo_usuario !== 'vendedor') {
       throw new ForbiddenException('Somente contas de vendedor podem anunciar');
     }
