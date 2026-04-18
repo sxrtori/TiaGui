@@ -53,6 +53,16 @@ export class UsuariosService {
       );
     }
 
+    const normalizedCpf = this.normalizeCpf(createUsuarioDto.cpf);
+    if (normalizedCpf) {
+      const cpfEmUso = await this.usuarioRepository.findOne({
+        where: { cpf: normalizedCpf },
+      });
+      if (cpfEmUso) {
+        throw new ConflictException('CPF já cadastrado');
+      }
+    }
+
     const usuario = this.usuarioRepository.create({
       nome: createUsuarioDto.nome,
       cpf: this.normalizeCpf(createUsuarioDto.cpf),
@@ -117,9 +127,17 @@ export class UsuariosService {
       );
     }
 
+    const nextCpf = this.normalizeCpf(updateUsuarioDto.cpf ?? usuario.cpf);
+    if (nextCpf && nextCpf !== usuario.cpf) {
+      const cpfEmUso = await this.usuarioRepository.findOne({ where: { cpf: nextCpf } });
+      if (cpfEmUso && cpfEmUso.id_usuario !== usuario.id_usuario) {
+        throw new ConflictException('CPF já cadastrado');
+      }
+    }
+
     Object.assign(usuario, {
       ...updateUsuarioDto,
-      cpf: this.normalizeCpf(updateUsuarioDto.cpf ?? usuario.cpf),
+      cpf: nextCpf,
       email: updateUsuarioDto.email?.toLowerCase() ?? usuario.email,
       senha: updateUsuarioDto.senha
         ? this.hashPassword(updateUsuarioDto.senha)
