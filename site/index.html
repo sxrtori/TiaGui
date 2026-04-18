@@ -580,25 +580,37 @@
             <div class="input-group">
               <label>Forma de pagamento</label>
               <select id="paymentMethod">
-                <option value="credito">Cartão de crédito</option>
+                <option value="credito">Cartão</option>
                 <option value="pix">Pix</option>
                 <option value="boleto">Boleto</option>
               </select>
             </div>
 
-            <div class="input-group" id="installmentsGroup">
-              <label>Parcelamento</label>
-              <select id="installmentsSelect">
-                <option>1x sem juros</option>
-                <option>2x sem juros</option>
-                <option>3x sem juros</option>
-              </select>
-            </div>
-            <div class="input-group full">
-              <label class="checkbox-label">
-                <input type="checkbox" id="savePaymentInfo" />
-                Salvar dados de pagamento para próximas compras
-              </label>
+            <div id="cardFields" class="checkout-card-fields full">
+              <div class="input-group full">
+                <label>Número do cartão</label>
+                <input type="text" id="cardNumber" placeholder="0000 0000 0000 0000" maxlength="19" />
+              </div>
+              <div class="input-group full">
+                <label>Nome impresso</label>
+                <input type="text" id="cardHolderName" placeholder="Nome no cartão" maxlength="100" />
+              </div>
+              <div class="input-group">
+                <label>Validade</label>
+                <input type="text" id="cardExpiry" placeholder="MM/AA" maxlength="5" />
+              </div>
+              <div class="input-group">
+                <label>CVV</label>
+                <input type="password" id="cardCvv" placeholder="***" maxlength="4" />
+              </div>
+              <div class="input-group" id="installmentsGroup">
+                <label>Parcelamento</label>
+                <select id="installmentsSelect">
+                  <option>1x sem juros</option>
+                  <option>2x sem juros</option>
+                  <option>3x sem juros</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -668,7 +680,10 @@
 
         <div class="input-group">
           <label>Senha</label>
-          <input type="password" id="authPassword" placeholder="••••••••" />
+          <div class="password-field">
+            <input type="password" id="authPassword" placeholder="••••••••" />
+            <button type="button" class="password-toggle" id="toggleAuthPassword" aria-label="Mostrar senha" aria-pressed="false">👁️‍🗨️</button>
+          </div>
         </div>
 
         <div class="input-group hidden" id="accountTypeField">
