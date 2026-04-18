@@ -13,6 +13,21 @@ import {
 
 export class CalcularFreteItemDto {
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  id?: number;
+
+  // Compatibilidade com payload antigo do front-end.
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  id_produto?: number;
+
+  @IsOptional()
+  @IsString()
+  nome?: string;
+
+  @IsOptional()
   @IsString()
   sku?: string;
 
@@ -46,10 +61,18 @@ export class CalcularFreteItemDto {
   @Max(1000)
   quantidade: number;
 
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  valorUnitario: number;
+  valorUnitario?: number;
+
+  // Alias aceito para manter integração com front-end atual.
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  preco?: number;
 }
 
 export class CalcularFreteDto {

@@ -43,11 +43,21 @@ export class FreteService {
     const enderecoDestino = await this.cepService.buscarEndereco(destinoCep);
     const subtotal = Number(payload.subtotal || 0);
 
+    const itensNormalizados = payload.itens.map((item) => ({
+      ...item,
+      valorUnitario: Number(item.valorUnitario ?? item.preco ?? 0),
+    }));
+
+    if (itensNormalizados.some((item) => !Number.isFinite(item.valorUnitario) || item.valorUnitario < 0)) {
+      throw new BadRequestException('Item de frete com valor inválido.');
+    }
+
     let cotacao: CotacaoFreteResultado;
     let providerName = 'frenet';
     try {
       cotacao = await this.provider.calcular({
         ...payload,
+        itens: itensNormalizados,
         cep: destinoCep,
         cepOrigem: this.origemCep,
       });
