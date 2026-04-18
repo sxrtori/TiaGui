@@ -10,5 +10,6 @@ import { EntregaOpcao } from '../frete/entities/entrega-opcao.entity';
   imports: [TypeOrmModule.forFeature([Pedido, ItemPedido, EntregaOpcao])],
   controllers: [PedidosController],
   providers: [PedidosService],
+  exports: [PedidosService],
 })
 export class PedidosModule {}

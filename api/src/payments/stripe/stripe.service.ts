@@ -7,6 +7,12 @@ type StripeCheckoutSessionResponse = {
   url: string;
 };
 
+type StripePaymentIntentResponse = {
+  id: string;
+  client_secret: string;
+  status: string;
+};
+
 @Injectable()
 export class StripeService {
   private readonly logger = new Logger(StripeService.name);
@@ -15,6 +21,10 @@ export class StripeService {
 
   isConfigured() {
     return Boolean(this.configService.get<string>('STRIPE_SECRET_KEY'));
+  }
+
+  getPublicKey() {
+    return this.configService.get<string>('STRIPE_PUBLIC_KEY') || '';
   }
 
   async createGiftCardCheckoutSession(payload: {
@@ -71,6 +81,40 @@ export class StripeService {
 
     const session = (await response.json()) as StripeCheckoutSessionResponse;
     return session;
+  }
+
+  async createOrderPaymentIntent(payload: {
+    pedidoId: number;
+    amount: number;
+    currency?: string;
+  }): Promise<StripePaymentIntentResponse> {
+    const apiKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    if (!apiKey) {
+      throw new Error('Pagamento indisponível no momento.');
+    }
+
+    const params = new URLSearchParams();
+    params.set('amount', String(Math.round(Number(payload.amount || 0) * 100)));
+    params.set('currency', (payload.currency || 'brl').toLowerCase());
+    params.set('automatic_payment_methods[enabled]', 'true');
+    params.set('metadata[pedidoId]', String(payload.pedidoId));
+
+    const response = await fetch('https://api.stripe.com/v1/payment_intents', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params,
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      this.logger.error(`Falha ao criar PaymentIntent Stripe: ${details}`);
+      throw new Error('Não foi possível iniciar o pagamento no momento.');
+    }
+
+    return (await response.json()) as StripePaymentIntentResponse;
   }
 
   verifyWebhookSignature(payload: Buffer, signatureHeader: string) {

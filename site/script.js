@@ -1605,6 +1605,16 @@ function setupAuthUi() {
   });
   document.getElementById('authForm')?.addEventListener('submit', handleAuthSubmit);
   document.getElementById('toggleAuthModeBtn')?.addEventListener('click', () => setAuthMode(state.authMode === 'login' ? 'register' : 'login'));
+  document.getElementById('toggleAuthPassword')?.addEventListener('click', () => {
+    const passwordInput = document.getElementById('authPassword');
+    const toggleBtn = document.getElementById('toggleAuthPassword');
+    if (!passwordInput || !toggleBtn) return;
+    const visible = passwordInput.type === 'text';
+    passwordInput.type = visible ? 'password' : 'text';
+    toggleBtn.textContent = visible ? '👁️‍🗨️' : '👁️';
+    toggleBtn.setAttribute('aria-pressed', String(!visible));
+    toggleBtn.setAttribute('aria-label', visible ? 'Mostrar senha' : 'Ocultar senha');
+  });
   document.querySelectorAll('[data-auth-mode]').forEach((tab) => tab.addEventListener('click', () => setAuthMode(tab.dataset.authMode)));
   document.getElementById('authType')?.addEventListener('change', () => setAuthMode(state.authMode));
   document.getElementById('authCpf')?.addEventListener('input', (event) => {
@@ -1663,9 +1673,11 @@ function setupAuthUi() {
   const installmentsGroup = document.getElementById('installmentsGroup');
   const installmentsSelect = document.getElementById('installmentsSelect');
   const paymentMethod = document.getElementById('paymentMethod');
+  const cardFields = document.getElementById('cardFields');
   const syncPaymentInstallments = () => {
-    if (!paymentMethod || !installmentsGroup || !installmentsSelect) return;
+    if (!paymentMethod || !installmentsGroup || !installmentsSelect || !cardFields) return;
     const cardSelected = paymentMethod.value === 'credito';
+    cardFields.style.display = cardSelected ? '' : 'none';
     installmentsGroup.style.display = cardSelected ? '' : 'none';
     installmentsSelect.disabled = !cardSelected;
     if (!cardSelected) installmentsSelect.value = '1x sem juros';
@@ -1686,6 +1698,15 @@ function setupAuthUi() {
     }
     const paymentMap = { credito: 'cartao', pix: 'pix', boleto: 'boleto' };
     const selectedPayment = document.getElementById('paymentMethod')?.value || 'credito';
+    if (selectedPayment === 'credito') {
+      const cardNumber = (document.getElementById('cardNumber')?.value || '').replace(/\s+/g, '');
+      const cardHolderName = (document.getElementById('cardHolderName')?.value || '').trim();
+      const cardExpiry = (document.getElementById('cardExpiry')?.value || '').trim();
+      const cardCvv = (document.getElementById('cardCvv')?.value || '').trim();
+      if (!cardNumber || !cardHolderName || !cardExpiry || !cardCvv) {
+        return showToast('Preencha os dados do cartão para continuar.');
+      }
+    }
     console.log(state.currentUser);
     if (!state.currentUser?.id_usuario) {
       showToast('Você precisa estar logado');
@@ -1725,13 +1746,38 @@ function setupAuthUi() {
         total: Number(total.toFixed(2)),
       },
     };
+    const finishOrderBtn = document.getElementById('finishOrderBtn');
+    const originalFinishText = finishOrderBtn?.textContent || 'Confirmar pedido';
+
+    if (finishOrderBtn) {
+      finishOrderBtn.disabled = true;
+      finishOrderBtn.textContent = 'Processando...';
+    }
+
+    let pedidoCriado;
     try {
-      await apiRequest('/pedidos', {
+      pedidoCriado = await apiRequest('/pedidos', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+
+      if (selectedPayment === 'credito' && pedidoCriado?.id_pedido) {
+        await apiRequest('/payments/stripe/payment-intent', {
+          method: 'POST',
+          body: JSON.stringify({ pedidoId: Number(pedidoCriado.id_pedido) }),
+        });
+      }
     } catch (error) {
+      if (finishOrderBtn) {
+        finishOrderBtn.disabled = false;
+        finishOrderBtn.textContent = originalFinishText;
+      }
       return showToast(normalizeUiErrorMessage(error, 'Não foi possível confirmar o pedido. Verifique os dados e tente novamente.'));
+    }
+
+    if (finishOrderBtn) {
+      finishOrderBtn.disabled = false;
+      finishOrderBtn.textContent = originalFinishText;
     }
     showToast('Pedido confirmado com sucesso.');
     state.cart = [];

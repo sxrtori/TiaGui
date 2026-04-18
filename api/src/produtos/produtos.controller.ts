@@ -10,13 +10,17 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ProdutosSeedService } from './produtos-seed.service';
 import { ProdutosService } from './produtos.service';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
 
 @Controller('produtos')
 export class ProdutosController {
-  constructor(private readonly produtosService: ProdutosService) {}
+  constructor(
+    private readonly produtosService: ProdutosService,
+    private readonly produtosSeedService: ProdutosSeedService,
+  ) {}
 
   @Get()
   findAll(
@@ -51,6 +55,12 @@ export class ProdutosController {
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.produtosService.findOne(id);
+  }
+
+
+  @Post('seed')
+  seedProdutos() {
+    return this.produtosSeedService.seedDefaultProducts();
   }
 
   @Post()

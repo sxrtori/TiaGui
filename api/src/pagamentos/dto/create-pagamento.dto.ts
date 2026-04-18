@@ -26,4 +26,9 @@ export class CreatePagamentoDto {
   @IsOptional()
   @IsString()
   token_gateway?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  status?: string;
 }
