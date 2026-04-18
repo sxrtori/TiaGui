@@ -948,10 +948,33 @@ function saveSessionState() {
   }));
 }
 
+function getCartItemKey(item = {}) {
+  return `${Number(item.id || 0)}::${String(item.selectedSize || '')}::${String(item.selectedColor || '')}`;
+}
+
+function findCartItemByKey(key = '') {
+  return state.cart.find((item) => getCartItemKey(item) === key);
+}
+
+function changeCartItemQty(key, nextQty) {
+  const item = findCartItemByKey(key);
+  if (!item) return;
+  item.qty = Number(nextQty || 0);
+  if (item.qty <= 0) state.cart = state.cart.filter((entry) => getCartItemKey(entry) !== key);
+}
+
 function getCartEntries() {
   return state.cart.map((item) => {
     const product = getProductById(item.id);
-    return product ? { product, qty: Number(item.qty || 1), selectedSize: item.selectedSize || '', selectedColor: item.selectedColor || '' } : null;
+    return product
+      ? {
+        product,
+        qty: Number(item.qty || 1),
+        selectedSize: item.selectedSize || '',
+        selectedColor: item.selectedColor || '',
+        key: getCartItemKey(item),
+      }
+      : null;
   }).filter(Boolean);
 }
 
@@ -1062,7 +1085,7 @@ function renderCart() {
   if (!entries.length) {
     target.innerHTML = '<div class="empty-state"><h3>Seu carrinho está vazio.</h3><p>Adicione produtos para continuar.</p></div>';
   } else {
-    target.innerHTML = entries.map(({ product, qty, selectedColor, selectedSize }) => `
+    target.innerHTML = entries.map(({ product, qty, selectedColor, selectedSize, key }) => `
       <article class="drawer-item">
         <img src="${product.imagem}" alt="${product.nome}" />
         <div>
@@ -1070,12 +1093,12 @@ function renderCart() {
           <p>${currency(discountedPrice(product))}</p>
           <small>${selectedColor ? `Cor: ${selectedColor}` : ''} ${selectedSize ? `• Tam: ${selectedSize}` : ''}</small>
           <div class="qty">
-            <button data-action="decrease-cart" data-id="${product.id}">−</button>
+            <button data-action="decrease-cart" data-cart-key="${key}">−</button>
             <span>${qty}</span>
-            <button data-action="increase-cart" data-id="${product.id}">+</button>
+            <button data-action="increase-cart" data-cart-key="${key}">+</button>
           </div>
         </div>
-        <button class="btn-link" data-action="remove-cart" data-id="${product.id}">Remover</button>
+        <button class="btn-link" data-action="remove-cart" data-cart-key="${key}">Remover</button>
       </article>
     `).join('');
   }
@@ -1235,11 +1258,28 @@ function addToCart(id, options = {}) {
   if (!state.currentUser && !options.skipAuth) {
     return ensureAuth(() => addToCart(id, { ...options, skipAuth: true }), 'Faça login para continuar');
   }
+  const product = getProductById(id);
+  if (!product) {
+    showToast('Não foi possível adicionar este produto no momento.');
+    return;
+  }
   const item = state.cart.find((x) => Number(x.id) === Number(id) && String(x.selectedSize || '') === String(options.selectedSize || '') && String(x.selectedColor || '') === String(options.selectedColor || ''));
   if (item) item.qty += 1; else state.cart.push({ id: Number(id), qty: 1, selectedSize: options.selectedSize || '', selectedColor: options.selectedColor || '', selectedColorHex: options.selectedColorHex || '' });
   saveSessionState();
   renderCart();
   refreshCheckoutShippingOptions();
+  if (options.feedbackEl) {
+    const button = options.feedbackEl;
+    const original = button.dataset.addLabel || button.textContent || 'Adicionar';
+    button.dataset.addLabel = original;
+    button.disabled = true;
+    button.textContent = 'Adicionado ✓';
+    clearTimeout(addToCart.feedbackTimeout);
+    addToCart.feedbackTimeout = setTimeout(() => {
+      button.disabled = false;
+      button.textContent = original;
+    }, 900);
+  }
   showToast('Produto adicionado ao carrinho.');
 }
 
@@ -1295,15 +1335,16 @@ function toggleWishlistMiniModal(open = true) {
 
 function handleGlobalClick(e) {
   const quickAdd = e.target.closest('.add-to-cart');
-  if (quickAdd?.dataset.id) addToCart(Number(quickAdd.dataset.id));
+  if (quickAdd?.dataset.id) addToCart(Number(quickAdd.dataset.id), { feedbackEl: quickAdd });
   const action = e.target.closest('[data-action]');
   if (action) {
     const id = Number(action.dataset.id);
-    if (action.dataset.action === 'cart') addToCart(id);
+    const cartKey = action.dataset.cartKey || '';
+    if (action.dataset.action === 'cart') addToCart(id, { feedbackEl: action });
     if (action.dataset.action === 'wish') toggleWish(id);
-    if (action.dataset.action === 'increase-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty += 1; saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
-    if (action.dataset.action === 'decrease-cart') { const item = state.cart.find((x) => Number(x.id) === id); if (item) item.qty -= 1; state.cart = state.cart.filter((x) => x.qty > 0); saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
-    if (action.dataset.action === 'remove-cart') { state.cart = state.cart.filter((x) => Number(x.id) !== id); saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
+    if (action.dataset.action === 'increase-cart') { const item = findCartItemByKey(cartKey); if (item) item.qty += 1; saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
+    if (action.dataset.action === 'decrease-cart') { const item = findCartItemByKey(cartKey); if (item) changeCartItemQty(cartKey, Number(item.qty || 0) - 1); saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
+    if (action.dataset.action === 'remove-cart') { state.cart = state.cart.filter((x) => getCartItemKey(x) !== cartKey); saveSessionState(); renderCart(); refreshCheckoutShippingOptions(); }
     if (action.dataset.action === 'wishlist-cart') {
       addToCart(id, { skipAuth: true });
       toggleWishlistMiniModal(true);

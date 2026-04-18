@@ -6,6 +6,8 @@ import { Usuario } from '../usuarios/entities/usuario.entity';
 
 @Injectable()
 export class InMemoryDataService {
+  // Fonte temporária em memória.
+  // TODO(db): substituir por repositórios TypeORM/Prisma quando o PostgreSQL for reconectado.
   users: Usuario[] = [];
   products: Produto[] = [
     {
