@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Categoria } from './entities/categoria.entity';
@@ -32,7 +32,7 @@ const DEFAULT_PRODUCTS = [
 ];
 
 @Injectable()
-export class ProdutosSeedService implements OnApplicationBootstrap {
+export class ProdutosSeedService {
   private readonly logger = new Logger(ProdutosSeedService.name);
 
   constructor(
@@ -41,10 +41,6 @@ export class ProdutosSeedService implements OnApplicationBootstrap {
     @InjectRepository(Categoria)
     private readonly categoriaRepository: Repository<Categoria>,
   ) {}
-
-  async onApplicationBootstrap() {
-    await this.seedDefaultProducts();
-  }
 
   async seedDefaultProducts() {
     const categorias = await this.categoriaRepository.find();

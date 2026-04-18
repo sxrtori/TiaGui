@@ -2461,6 +2461,38 @@ textarea:focus {
   gap: 12px;
 }
 
+.stripe-payment-element {
+  padding: 12px;
+  border: 1px solid #e4e4e4;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.field-help {
+  display: block;
+  margin-top: 6px;
+  color: #666;
+  font-size: 0.78rem;
+}
+
+.payment-feedback {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  font-size: 0.84rem;
+}
+
+.payment-feedback.warn {
+  color: #8a5a00;
+}
+
+.payment-feedback.error {
+  color: #b00020;
+}
+
+.payment-feedback.success {
+  color: #0d7a46;
+}
+
 .password-field {
   position: relative;
 }

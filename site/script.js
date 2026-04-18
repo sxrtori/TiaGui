@@ -88,7 +88,17 @@ const state = {
   shippingOrigin: null,
   shippingZipCode: '',
   giftCards: [],
+  stripe: {
+    pedidoId: null,
+    clientSecret: '',
+    paymentIntentId: '',
+    publicKey: '',
+  },
 };
+
+let stripeInstance = null;
+let stripeElements = null;
+let stripePaymentElement = null;
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -122,6 +132,49 @@ function showToast(message) {
   t.classList.add('show');
   clearTimeout(showToast.ttl);
   showToast.ttl = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function setPaymentFeedback(message, type = 'info') {
+  const feedback = document.getElementById('paymentFeedback');
+  if (!feedback) return;
+  feedback.textContent = message || '';
+  feedback.className = `payment-feedback${message ? ` ${type}` : ''}`;
+}
+
+function resetStripeCheckoutState() {
+  state.stripe = {
+    pedidoId: null,
+    clientSecret: '',
+    paymentIntentId: '',
+    publicKey: '',
+  };
+  if (stripePaymentElement) {
+    stripePaymentElement.unmount();
+    stripePaymentElement = null;
+  }
+  stripeElements = null;
+  setPaymentFeedback('');
+}
+
+async function mountStripePaymentElement(clientSecret, publicKey) {
+  if (!window.Stripe) throw new Error('Stripe.js não carregado.');
+  if (!publicKey || !clientSecret) throw new Error('Configuração Stripe inválida.');
+
+  if (!stripeInstance || state.stripe.publicKey !== publicKey) {
+    stripeInstance = window.Stripe(publicKey);
+  }
+
+  if (!stripeElements || state.stripe.clientSecret !== clientSecret) {
+    stripeElements = stripeInstance.elements({
+      clientSecret,
+      appearance: { theme: 'stripe' },
+      locale: 'pt-BR',
+    });
+  }
+
+  if (stripePaymentElement) stripePaymentElement.unmount();
+  stripePaymentElement = stripeElements.create('payment');
+  stripePaymentElement.mount('#paymentElement');
 }
 
 async function apiRequest(path, options = {}) {
@@ -1364,6 +1417,8 @@ function toggleCheckout(open = true) {
     }
     updateCartTotals();
     refreshCheckoutShippingOptions();
+  } else {
+    resetStripeCheckoutState();
   }
 }
 
@@ -1676,11 +1731,12 @@ function setupAuthUi() {
   const cardFields = document.getElementById('cardFields');
   const syncPaymentInstallments = () => {
     if (!paymentMethod || !installmentsGroup || !installmentsSelect || !cardFields) return;
-    const cardSelected = paymentMethod.value === 'credito';
+    const cardSelected = paymentMethod.value === 'cartao';
     cardFields.style.display = cardSelected ? '' : 'none';
     installmentsGroup.style.display = cardSelected ? '' : 'none';
     installmentsSelect.disabled = !cardSelected;
     if (!cardSelected) installmentsSelect.value = '1x sem juros';
+    if (!cardSelected) resetStripeCheckoutState();
   };
   paymentMethod?.addEventListener('change', syncPaymentInstallments);
   syncPaymentInstallments();
@@ -1696,17 +1752,8 @@ function setupAuthUi() {
     if (!address.rua || !address.bairro || !address.cidade || !address.estado || !address.numero) {
       return showToast('Preencha endereço completo para finalizar o pedido.');
     }
-    const paymentMap = { credito: 'cartao', pix: 'pix', boleto: 'boleto' };
-    const selectedPayment = document.getElementById('paymentMethod')?.value || 'credito';
-    if (selectedPayment === 'credito') {
-      const cardNumber = (document.getElementById('cardNumber')?.value || '').replace(/\s+/g, '');
-      const cardHolderName = (document.getElementById('cardHolderName')?.value || '').trim();
-      const cardExpiry = (document.getElementById('cardExpiry')?.value || '').trim();
-      const cardCvv = (document.getElementById('cardCvv')?.value || '').trim();
-      if (!cardNumber || !cardHolderName || !cardExpiry || !cardCvv) {
-        return showToast('Preencha os dados do cartão para continuar.');
-      }
-    }
+    const selectedPayment = document.getElementById('paymentMethod')?.value || 'cartao';
+    const isCardPayment = selectedPayment === 'cartao';
     console.log(state.currentUser);
     if (!state.currentUser?.id_usuario) {
       showToast('Você precisa estar logado');
@@ -1718,7 +1765,7 @@ function setupAuthUi() {
         ? Number(state.shippingOption.id)
         : undefined,
       status: 'pendente',
-      forma_pagamento: paymentMap[selectedPayment] || 'cartao',
+      forma_pagamento: ['cartao', 'pix', 'boleto'].includes(selectedPayment) ? selectedPayment : 'cartao',
       subtotal: Number(subtotal.toFixed(2)),
       valor_frete: Number(shipping.toFixed(2)),
       desconto: 0,
@@ -1754,18 +1801,68 @@ function setupAuthUi() {
       finishOrderBtn.textContent = 'Processando...';
     }
 
-    let pedidoCriado;
     try {
-      pedidoCriado = await apiRequest('/pedidos', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-
-      if (selectedPayment === 'credito' && pedidoCriado?.id_pedido) {
-        await apiRequest('/payments/stripe/payment-intent', {
+      let pedidoId = Number(state.stripe.pedidoId || 0);
+      if (!isCardPayment || !pedidoId) {
+        const pedidoCriado = await apiRequest('/pedidos', {
           method: 'POST',
-          body: JSON.stringify({ pedidoId: Number(pedidoCriado.id_pedido) }),
+          body: JSON.stringify(payload),
         });
+        pedidoId = Number(pedidoCriado?.id_pedido || 0);
+      }
+
+      if (isCardPayment && pedidoId > 0 && !state.stripe.clientSecret) {
+        const intent = await apiRequest('/payments/stripe/payment-intent', {
+          method: 'POST',
+          body: JSON.stringify({ pedidoId }),
+        });
+        state.stripe = {
+          pedidoId,
+          clientSecret: intent.clientSecret || '',
+          paymentIntentId: intent.stripePaymentIntentId || '',
+          publicKey: intent.publicKey || '',
+        };
+        await mountStripePaymentElement(state.stripe.clientSecret, state.stripe.publicKey);
+        setPaymentFeedback('Digite os dados no formulário seguro e clique em "Confirmar pedido" novamente.', 'warn');
+        showToast('Pagamento com cartão iniciado. Complete os dados do Stripe.');
+        if (finishOrderBtn) {
+          finishOrderBtn.disabled = false;
+          finishOrderBtn.textContent = originalFinishText;
+        }
+        return;
+      }
+
+      if (isCardPayment) {
+        if (!stripeInstance || !stripeElements || !stripePaymentElement || !state.stripe.clientSecret) {
+          throw new Error('Pagamento com cartão ainda não inicializado.');
+        }
+
+        setPaymentFeedback('Processando pagamento do cartão...', 'warn');
+        const result = await stripeInstance.confirmPayment({
+          elements: stripeElements,
+          clientSecret: state.stripe.clientSecret,
+          confirmParams: {
+            return_url: `${FRONTEND_BASE_URL}/index.html`,
+          },
+          redirect: 'if_required',
+        });
+
+        if (result.error) {
+          setPaymentFeedback(result.error.message || 'Não foi possível confirmar o pagamento.', 'error');
+          throw new Error(result.error.message || 'Não foi possível confirmar o pagamento.');
+        }
+
+        const paymentIntent = result.paymentIntent;
+        if (!paymentIntent) {
+          throw new Error('Não foi possível confirmar o pagamento com cartão.');
+        }
+
+        if (['requires_payment_method', 'canceled'].includes(paymentIntent.status)) {
+          setPaymentFeedback('Pagamento não aprovado. Confira os dados e tente novamente.', 'error');
+          throw new Error('Pagamento não aprovado.');
+        }
+
+        setPaymentFeedback('Pagamento confirmado com sucesso.', 'success');
       }
     } catch (error) {
       if (finishOrderBtn) {
@@ -1784,6 +1881,7 @@ function setupAuthUi() {
     state.shippingOption = null;
     state.shippingOptions = [];
     state.shippingZipCode = '';
+    resetStripeCheckoutState();
     const shippingOptions = document.getElementById('checkoutShippingOptions');
     if (shippingOptions) shippingOptions.innerHTML = '';
     saveSessionState();
