@@ -313,18 +313,22 @@ async function fetchAddressByCep(cep) {
   try {
     return await apiRequest(`/frete/cep/${cleanCep}`);
   } catch (_apiError) {
-    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-    if (!response.ok) throw new Error('Não foi possível consultar o CEP agora.');
-    const data = await response.json();
-    if (data?.erro) throw new Error('CEP não encontrado.');
-    return {
-      cep: data.cep || formatCep(cleanCep),
-      rua: data.logradouro || '',
-      bairro: data.bairro || '',
-      cidade: data.localidade || '',
-      estado: String(data.uf || '').toUpperCase(),
-      complemento: data.complemento || '',
-    };
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      if (!response.ok) throw new Error('Não foi possível consultar o CEP agora.');
+      const data = await response.json();
+      if (data?.erro) throw new Error('CEP não encontrado.');
+      return {
+        cep: data.cep || formatCep(cleanCep),
+        rua: data.logradouro || '',
+        bairro: data.bairro || '',
+        cidade: data.localidade || '',
+        estado: String(data.uf || '').toUpperCase(),
+        complemento: data.complemento || '',
+      };
+    } catch {
+      throw new Error('Não conseguimos consultar esse CEP agora. Tente novamente em instantes.');
+    }
   }
 }
 
@@ -1340,9 +1344,8 @@ function setGiftCardFeedback(message, type = '') {
 function resolveGiftCardValue() {
   const selected = document.getElementById('giftValue')?.value || '99';
   const customField = document.getElementById('giftCustom');
-  const customValue = Number(customField?.value || 0);
-  if (selected === 'custom') return Number(customValue || 0);
-  return Number(selected);
+  if (selected === 'custom') return Number(customField?.value || 0);
+  return Number(selected || 0);
 }
 
 function syncGiftCardValueUi() {
@@ -1352,7 +1355,12 @@ function syncGiftCardValueUi() {
   const isCustom = valueSelect.value === 'custom';
   customField.disabled = !isCustom;
   customField.required = isCustom;
-  if (!isCustom) customField.value = '';
+  customField.min = String(GIFT_CARD_MIN_VALUE);
+  customField.max = String(GIFT_CARD_MAX_VALUE);
+  if (!isCustom) {
+    customField.value = '';
+    customField.removeAttribute('aria-invalid');
+  }
 }
 
 async function handleGiftCardPurchase() {
@@ -1371,14 +1379,17 @@ async function handleGiftCardPurchase() {
     setGiftCardFeedback('Informe um e-mail válido para o destinatário.', 'error');
     return;
   }
-  if (selectedValue === 'custom' && !finalValue) {
+  if (selectedValue === 'custom' && !Number.isFinite(finalValue)) {
     setGiftCardFeedback('Para valor personalizado, informe um valor válido.', 'error');
+    document.getElementById('giftCustom')?.setAttribute('aria-invalid', 'true');
     return;
   }
-  if (finalValue < GIFT_CARD_MIN_VALUE || finalValue > GIFT_CARD_MAX_VALUE) {
+  if (!Number.isFinite(finalValue) || finalValue < GIFT_CARD_MIN_VALUE || finalValue > GIFT_CARD_MAX_VALUE) {
     setGiftCardFeedback(`O valor do gift card deve ficar entre ${currency(GIFT_CARD_MIN_VALUE)} e ${currency(GIFT_CARD_MAX_VALUE)}.`, 'error');
+    document.getElementById('giftCustom')?.setAttribute('aria-invalid', 'true');
     return;
   }
+  document.getElementById('giftCustom')?.removeAttribute('aria-invalid');
 
   const originalText = button?.textContent || 'Comprar gift card';
   if (button) {
@@ -1391,22 +1402,25 @@ async function handleGiftCardPurchase() {
     const checkout = await apiRequest('/gift-cards/checkout', {
       method: 'POST',
       body: JSON.stringify({
-        destinatarioNome: name,
-        destinatarioEmail: email,
+        nomeDestinatario: name,
+        emailDestinatario: email,
         valor: Math.round(finalValue),
         mensagem: message,
+        successUrl: `${window.location.origin}/index.html?gift=success`,
+        cancelUrl: `${window.location.origin}/index.html?gift=cancel`,
       }),
     });
 
-    setGiftCardFeedback('Pagamento iniciado. Confirmando pagamento...', 'warn');
-    const confirmation = await apiRequest(`/gift-cards/${checkout.giftCard.id}/confirmar-pagamento`, {
-      method: 'POST',
-    });
-    state.giftCards.unshift(confirmation.giftCard);
+    state.giftCards.unshift(checkout.giftCard);
     localStorage.setItem(STORAGE_KEYS.giftCards, JSON.stringify(state.giftCards));
 
-    setGiftCardFeedback(`Gift card comprado com sucesso! Código ${confirmation.giftCard.codigo} enviado por e-mail.`, 'success');
-    showToast('Gift card pago e enviado com sucesso.');
+    if (checkout?.checkout?.url) {
+      setGiftCardFeedback('Redirecionando para o pagamento seguro...', 'warn');
+      window.location.href = checkout.checkout.url;
+      return;
+    }
+
+    throw new Error('Não foi possível iniciar o checkout do Stripe.');
   } catch (error) {
     setGiftCardFeedback(normalizeUiErrorMessage(error, 'Não foi possível concluir a compra do gift card.'), 'error');
   } finally {
@@ -1426,7 +1440,15 @@ function loadSession() {
   state.localReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localReviews) || '{}');
   state.localSellerReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localSellerReviews) || '{}');
   state.giftCards = JSON.parse(localStorage.getItem(STORAGE_KEYS.giftCards) || '[]');
+
+  const giftStatus = new URLSearchParams(window.location.search).get('gift');
+  if (giftStatus === 'success') {
+    setGiftCardFeedback('Pagamento confirmado! Estamos processando o envio do seu gift card por e-mail.', 'success');
+  } else if (giftStatus === 'cancel') {
+    setGiftCardFeedback('Pagamento cancelado. Você pode tentar novamente quando quiser.', 'warn');
+  }
 }
+
 
 function setupAuthUi() {
   const accountDropdown = document.getElementById('accountDropdown');
@@ -1461,7 +1483,7 @@ function setupAuthUi() {
   document.getElementById('sellerProductOriginCep')?.addEventListener('input', (event) => {
     event.target.value = formatCep(event.target.value);
   });
-  document.getElementById('giftValue')?.addEventListener('change', syncGiftCardValueUi);
+  document.getElementById('giftValue')?.addEventListener('change', () => { syncGiftCardValueUi(); setGiftCardFeedback(''); });
   document.getElementById('giftBtn')?.addEventListener('click', handleGiftCardPurchase);
   document.getElementById('giftCustom')?.addEventListener('input', () => {
     setGiftCardFeedback('');

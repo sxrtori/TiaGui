@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { raw, Request } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -7,7 +8,19 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log'],
   });
 
-  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5500,http://127.0.0.1:5500')
+  app.use(
+    '/payments/stripe/webhook',
+    raw({
+      type: 'application/json',
+      verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
+        req.rawBody = Buffer.from(buf);
+      },
+    }),
+  );
+
+  const allowedOrigins = (
+    process.env.CORS_ORIGINS || 'http://localhost:5500,http://127.0.0.1:5500'
+  )
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
