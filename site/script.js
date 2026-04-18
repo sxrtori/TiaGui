@@ -14,7 +14,10 @@ const resolveApiBaseUrl = () => {
   return `${protocol}//${hostname}:${backendPort}`;
 };
 
-const API_BASE_URL = resolveApiBaseUrl();
+const API_BASE_URL = 'http://192.168.1.12:3001';
+
+console.log('SCRIPT CERTO CARREGADO');
+console.log('API_BASE_URL:', API_BASE_URL);
 const FRONTEND_BASE_URL = (window.SPORTX_FRONTEND_URL
   || document.querySelector('meta[name="sportx-frontend-url"]')?.content
   || window.location.origin).replace(/\/$/, '');
@@ -124,12 +127,18 @@ function showToast(message) {
 async function apiRequest(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (state.authToken) headers.Authorization = `Bearer ${state.authToken}`;
+
   let response;
+
   try {
+    console.log('FETCH:', `${API_BASE_URL}${path}`);
     response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  } catch (_networkError) {
+    console.log('STATUS:', response.status);
+  } catch (error) {
+    console.error('ERRO REAL DO FETCH:', error);
     throw new Error('Não foi possível conectar ao servidor. Tente novamente em instantes.');
   }
+
   if (!response.ok) {
     let apiMessage = '';
     try {
@@ -139,10 +148,11 @@ async function apiRequest(path, options = {}) {
     } catch (_e) {
       try {
         apiMessage = (await response.text()).trim();
-      } catch (_textError) {}
+      } catch {}
     }
     throw new Error(apiMessage || 'Não foi possível concluir esta ação no momento.');
   }
+
   if (response.status === 204) return null;
   return response.json();
 }
@@ -1238,21 +1248,37 @@ async function handleAuthSubmit(event) {
   setAuthFeedback('');
 
   try {
-    if (state.authMode === 'login') {
-      const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, senha: password }) });
-      const token = result.token || result.access_token || '';
-      if (!token || !result?.user) throw new Error('Sessão inválida recebida do servidor.');
-      persistUserSession(result.user, token);
-      setAuthFeedback('Login realizado com sucesso.', 'success');
-      showToast('Bem-vindo de volta!');
-    } else {
-      await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ nome: name, email, senha: password, tipo_usuario: type === 'comprador' ? 'cliente' : type, cpf: type === 'vendedor' ? cpf : undefined, data_nascimento: type === 'vendedor' ? birthDate : undefined }) });
-      setAuthFeedback('Conta criada com sucesso. Faça login.', 'success');
-      setAuthMode('login');
-      document.getElementById('authEmail') && (document.getElementById('authEmail').value = email);
-      document.getElementById('authPassword') && (document.getElementById('authPassword').value = '');
-      return;
-    }
+  if (state.authMode === 'login') {
+    const result = await apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        senha: password
+      })
+    });
+
+    persistUserSession(result.user || result, result.token || result.access_token || '');
+    setAuthFeedback('Login realizado com sucesso.', 'success');
+    showToast('Bem-vindo de volta!');
+  } else {
+    await apiRequest('/usuarios', {
+      method: 'POST',
+      body: JSON.stringify({
+        nome: name,
+        email,
+        senha: password,
+        tipo_usuario: type === 'comprador' ? 'cliente' : type,
+        cpf: type === 'vendedor' ? cpf : null,
+        data_nascimento: type === 'vendedor' ? birthDate : null
+      })
+    });
+
+    setAuthFeedback('Conta criada com sucesso. Faça login.', 'success');
+    setAuthMode('login');
+    document.getElementById('authEmail') && (document.getElementById('authEmail').value = email);
+    document.getElementById('authPassword') && (document.getElementById('authPassword').value = '');
+    return;
+  }
 
     closeAuthModal();
     const pending = state.pendingAction;
@@ -1660,9 +1686,16 @@ function setupAuthUi() {
     }
     const paymentMap = { credito: 'cartao', pix: 'pix', boleto: 'boleto' };
     const selectedPayment = document.getElementById('paymentMethod')?.value || 'credito';
+    console.log(state.currentUser);
+    if (!state.currentUser?.id_usuario) {
+      showToast('Você precisa estar logado');
+      return;
+    }
     const payload = {
-      id_usuario: Number(state.currentUser?.id_usuario || 0),
-      id_entrega_opcao: Number(state.shippingOption?.id_entrega_opcao || state.shippingOption?.id || 0) || undefined,
+      id_usuario: Number(state.currentUser.id_usuario),
+      id_entrega_opcao: state.shippingOption?.id
+        ? Number(state.shippingOption.id)
+        : undefined,
       status: 'pendente',
       forma_pagamento: paymentMap[selectedPayment] || 'cartao',
       subtotal: Number(subtotal.toFixed(2)),

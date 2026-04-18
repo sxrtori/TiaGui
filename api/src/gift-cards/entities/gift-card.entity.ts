@@ -19,8 +19,8 @@ export class GiftCard {
   @PrimaryGeneratedColumn({ name: 'id' })
   id: number;
 
-  @Column({ name: 'codigo', length: 32, unique: true, nullable: true })
-  codigo: string | null;
+  @Column({ name: 'codigo', type: 'varchar', length: 32, unique: true, nullable: true })
+  codigo?: string | null;
 
   @Column({ name: 'valor', type: 'decimal', precision: 10, scale: 2 })
   valor: number;

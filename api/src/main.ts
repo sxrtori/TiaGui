@@ -18,37 +18,8 @@ async function bootstrap() {
     }),
   );
 
-  const configuredOrigins = [
-    ...(process.env.CORS_ORIGINS || '').split(','),
-    process.env.FRONTEND_URL || '',
-  ]
-    .map((origin) => origin.trim().replace(/\/$/, ''))
-    .filter(Boolean);
-
   app.enableCors({
-    origin: (
-      origin: string | undefined,
-      callback: (error: Error | null, allow?: boolean) => void,
-    ) => {
-      if (!origin) return callback(null, true);
-      const normalizedOrigin = origin.replace(/\/$/, '');
-      if (configuredOrigins.includes('*')) return callback(null, true);
-      if (configuredOrigins.includes(normalizedOrigin))
-        return callback(null, true);
-
-      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
-        normalizedOrigin,
-      );
-      const isPrivateNetworkIp =
-        /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)(\d+\.\d+)(:\d+)?$/i.test(
-          normalizedOrigin,
-        );
-
-      if (isLocalhost || isPrivateNetworkIp) return callback(null, true);
-
-      return callback(new Error('Origem não permitida por CORS'), false);
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    origin: true,
     credentials: true,
   });
 
@@ -62,7 +33,7 @@ async function bootstrap() {
   );
 
   const port = Number(process.env.PORT || 3001);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`API SportX iniciada na porta ${port}`);
 }
 
