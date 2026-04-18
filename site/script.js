@@ -1,12 +1,21 @@
 const resolveApiBaseUrl = () => {
-  const explicit = window.SPORTX_API_URL || document.querySelector('meta[name="sportx-api-url"]')?.content || localStorage.getItem('sportx-api-base-url');
+  const explicit = window.SPORTX_API_URL
+    || window.API_BASE_URL
+    || document.querySelector('meta[name="sportx-api-url"]')?.content
+    || document.querySelector('meta[name="api-base-url"]')?.content
+    || localStorage.getItem('sportx-api-base-url');
   if (explicit) return explicit.replace(/\/$/, '');
   const { protocol, hostname } = window.location;
-  const port = window.location.port === '5500' ? '3000' : (window.location.port || '3000');
+  const frontendPort = window.location.port;
+  const commonFrontendPorts = new Set(['', '80', '443', '5500', '5173', '4173', '8080', '4200']);
+  const port = commonFrontendPorts.has(frontendPort) ? '3000' : frontendPort;
   return `${protocol}//${hostname}:${port}`;
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
+const FRONTEND_BASE_URL = (window.SPORTX_FRONTEND_URL
+  || document.querySelector('meta[name="sportx-frontend-url"]')?.content
+  || window.location.origin).replace(/\/$/, '');
 
 const STORAGE_KEYS = {
   cart: 'sportx-cart',
@@ -122,10 +131,14 @@ async function apiRequest(path, options = {}) {
   if (!response.ok) {
     let apiMessage = '';
     try {
-      const data = await response.json();
+      const data = await response.clone().json();
       apiMessage = data?.message;
       if (Array.isArray(apiMessage)) apiMessage = apiMessage[0];
-    } catch (_e) {}
+    } catch (_e) {
+      try {
+        apiMessage = (await response.text()).trim();
+      } catch (_textError) {}
+    }
     throw new Error(apiMessage || 'Não foi possível concluir esta ação no momento.');
   }
   if (response.status === 204) return null;
@@ -309,8 +322,19 @@ async function calculateShipping(cep, subtotal, items = []) {
 function normalizeUiErrorMessage(error, fallback = 'Não foi possível concluir esta ação.') {
   const message = String(error?.message || '').trim();
   if (!message) return fallback;
-  if (message.toLowerCase().includes('failed to fetch') || message.toLowerCase().includes('networkerror')) {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes('failed to fetch')
+    || normalized.includes('networkerror')
+    || normalized.includes('origem não permitida por cors')
+  ) {
     return 'Estamos com instabilidade de conexão no momento. Tente novamente em instantes.';
+  }
+  if (normalized.includes('forbidden resource')) {
+    return 'Sua sessão não tem permissão para esta ação.';
+  }
+  if (normalized.includes('invalid token') || normalized.includes('jwt')) {
+    return 'Sua sessão expirou. Faça login novamente.';
   }
   return message;
 }
@@ -340,7 +364,11 @@ async function fetchAddressByCep(cep) {
   if (cleanCep.length !== 8) throw new Error('CEP inválido. Use 8 dígitos.');
   try {
     return await apiRequest(`/frete/cep/${cleanCep}`);
-  } catch (_apiError) {
+  } catch (apiError) {
+    const apiMessage = String(apiError?.message || '').toLowerCase();
+    if (apiMessage.includes('cep inválido') || apiMessage.includes('cep não encontrado')) {
+      throw apiError;
+    }
     try {
       const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
       if (!response.ok) throw new Error('Não foi possível consultar o CEP agora.');
@@ -1155,6 +1183,10 @@ async function handleAuthSubmit(event) {
       setAuthFeedback('CPF inválido para vendedor.', 'error');
       return;
     }
+    if (!birthDate) {
+      setAuthFeedback('Informe sua data de nascimento para criar conta de vendedor.', 'error');
+      return;
+    }
     if (getAgeFromBirthDate(birthDate) < 18) {
       setAuthFeedback('É necessário ter 18 anos ou mais para vender.', 'error');
       return;
@@ -1190,7 +1222,7 @@ async function handleAuthSubmit(event) {
     state.pendingAction = null;
     pending?.();
   } catch (error) {
-    setAuthFeedback(error.message || 'Não foi possível autenticar.', 'error');
+    setAuthFeedback(normalizeUiErrorMessage(error, 'Não foi possível autenticar agora.'), 'error');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -1357,8 +1389,10 @@ function resolveGiftCardValue() {
 function syncGiftCardValueUi() {
   const valueSelect = document.getElementById('giftValue');
   const customField = document.getElementById('giftCustom');
+  const customFieldWrapper = document.getElementById('giftCustomField');
   if (!valueSelect || !customField) return;
   const isCustom = valueSelect.value === 'custom';
+  customFieldWrapper?.classList.toggle('hidden', !isCustom);
   customField.disabled = !isCustom;
   customField.required = isCustom;
   customField.min = String(GIFT_CARD_MIN_VALUE);
@@ -1395,7 +1429,9 @@ async function handleGiftCardPurchase() {
     document.getElementById('giftCustom')?.setAttribute('aria-invalid', 'true');
     return;
   }
-  document.getElementById('giftCustom')?.removeAttribute('aria-invalid');
+  if (selectedValue === 'custom') {
+    document.getElementById('giftCustom')?.removeAttribute('aria-invalid');
+  }
 
   const originalText = button?.textContent || 'Comprar gift card';
   if (button) {
@@ -1412,8 +1448,8 @@ async function handleGiftCardPurchase() {
         emailDestinatario: email,
         valor: Math.round(finalValue),
         mensagem: message,
-        successUrl: `${window.location.origin}/index.html?gift=success`,
-        cancelUrl: `${window.location.origin}/index.html?gift=cancel`,
+        successUrl: `${FRONTEND_BASE_URL}/index.html?gift=success`,
+        cancelUrl: `${FRONTEND_BASE_URL}/index.html?gift=cancel`,
       }),
     });
 

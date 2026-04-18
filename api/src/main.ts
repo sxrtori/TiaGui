@@ -18,19 +18,23 @@ async function bootstrap() {
     }),
   );
 
-  const configuredOrigins = (process.env.CORS_ORIGINS || '')
-    .split(',')
-    .map((origin) => origin.trim())
+  const configuredOrigins = [
+    ...(process.env.CORS_ORIGINS || '').split(','),
+    process.env.FRONTEND_URL || '',
+  ]
+    .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (configuredOrigins.includes(origin)) return callback(null, true);
+      const normalizedOrigin = origin.replace(/\/$/, '');
+      if (configuredOrigins.includes('*')) return callback(null, true);
+      if (configuredOrigins.includes(normalizedOrigin)) return callback(null, true);
 
-      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizedOrigin);
       const isPrivateNetworkIp = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)(\d+\.\d+)(:\d+)?$/i.test(
-        origin,
+        normalizedOrigin,
       );
 
       if (isLocalhost || isPrivateNetworkIp) return callback(null, true);
