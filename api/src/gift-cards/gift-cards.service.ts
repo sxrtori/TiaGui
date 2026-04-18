@@ -1,104 +1,128 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { CreateGiftCardDto } from './dto/create-gift-card.dto';
-
-export type GiftCardStatus = 'pendente' | 'pago' | 'enviado' | 'usado';
-
-type GiftCardRecord = {
-  id: number;
-  codigo: string | null;
-  valor: number;
-  destinatarioNome: string;
-  destinatarioEmail: string;
-  mensagem: string;
-  status: GiftCardStatus;
-  createdAt: string;
-  updatedAt: string;
-};
+import { GiftCard, GiftCardStatus } from './entities/gift-card.entity';
+import { StripeService } from '../payments/stripe/stripe.service';
+import { EmailService } from '../communications/email.service';
 
 @Injectable()
 export class GiftCardsService {
-  private giftCards: GiftCardRecord[] = [];
+  constructor(
+    @InjectRepository(GiftCard)
+    private readonly giftCardRepository: Repository<GiftCard>,
+    private readonly stripeService: StripeService,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  list() {
-    return this.giftCards;
+  async list() {
+    return this.giftCardRepository.find({
+      order: { id: 'DESC' },
+    });
   }
 
-  findOne(id: number) {
-    const giftCard = this.giftCards.find((item) => item.id === id);
+  async findOne(id: number) {
+    const giftCard = await this.giftCardRepository.findOne({ where: { id } });
     if (!giftCard) throw new NotFoundException('Gift card não encontrado.');
     return giftCard;
   }
 
-  iniciarCheckout(dto: CreateGiftCardDto) {
-    const now = new Date().toISOString();
-    const giftCard: GiftCardRecord = {
-      id: Date.now(),
+  async iniciarCheckout(dto: CreateGiftCardDto) {
+    const giftCard = this.giftCardRepository.create({
       codigo: null,
       valor: Math.round(Number(dto.valor)),
-      destinatarioNome: dto.destinatarioNome.trim(),
-      destinatarioEmail: dto.destinatarioEmail.trim().toLowerCase(),
+      nomeDestinatario: dto.nomeDestinatario.trim(),
+      emailDestinatario: dto.emailDestinatario.trim().toLowerCase(),
       mensagem: (dto.mensagem || '').trim(),
-      status: 'pendente',
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.giftCards.unshift(giftCard);
-
-    return {
-      giftCard,
-      pagamento: {
-        status: 'pendente',
-        proximaEtapa: 'confirmar_pagamento',
+      status: GiftCardStatus.PENDENTE,
+      metadata: {
+        origem: 'web',
       },
-      gateway: {
-        provider: 'simulado',
-        preparadoPara: ['melhor_envio_payments', 'stripe', 'mercado_pago'],
-      },
-    };
+    });
+
+    const persisted = await this.giftCardRepository.save(giftCard);
+
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5500';
+    const successUrl =
+      dto.successUrl || `${frontendUrl}/index.html?gift=success&giftCardId=${persisted.id}`;
+    const cancelUrl =
+      dto.cancelUrl || `${frontendUrl}/index.html?gift=cancel&giftCardId=${persisted.id}`;
+
+    try {
+      const session = await this.stripeService.createGiftCardCheckoutSession({
+        giftCardId: persisted.id,
+        valor: Number(persisted.valor),
+        nomeDestinatario: persisted.nomeDestinatario,
+        emailDestinatario: persisted.emailDestinatario,
+        successUrl,
+        cancelUrl,
+      });
+
+      persisted.stripeSessionId = session.id;
+      await this.giftCardRepository.save(persisted);
+
+      return {
+        giftCard: persisted,
+        checkout: {
+          sessionId: session.id,
+          url: session.url,
+        },
+      };
+    } catch {
+      await this.giftCardRepository.update(
+        { id: persisted.id },
+        { status: GiftCardStatus.CANCELADO },
+      );
+      throw new ServiceUnavailableException(
+        'Não foi possível iniciar o pagamento do gift card no momento.',
+      );
+    }
   }
 
-  confirmarPagamento(id: number) {
-    const giftCard = this.findOne(id);
-    if (giftCard.status === 'enviado' || giftCard.status === 'usado') {
-      return giftCard;
-    }
+  async processarPagamentoConfirmado(
+    checkoutSession: Record<string, unknown>,
+  ): Promise<void> {
+    const giftCardId = Number(
+      (checkoutSession.metadata as Record<string, string> | undefined)?.giftCardId ||
+        checkoutSession.client_reference_id,
+    );
+    if (!giftCardId) return;
 
-    const codigo = giftCard.codigo || this.gerarCodigoUnico();
-    giftCard.codigo = codigo;
-    giftCard.status = 'pago';
-    giftCard.updatedAt = new Date().toISOString();
+    const giftCard = await this.giftCardRepository.findOne({
+      where: { id: giftCardId },
+    });
+    if (!giftCard || giftCard.status === GiftCardStatus.ENVIADO) return;
 
-    this.enviarGiftCardEmail(giftCard);
+    giftCard.status = GiftCardStatus.PAGO;
+    giftCard.dataPagamento = new Date();
+    giftCard.stripeSessionId = String(checkoutSession.id || giftCard.stripeSessionId || '');
+    giftCard.stripePaymentIntentId = String(
+      checkoutSession.payment_intent || giftCard.stripePaymentIntentId || '',
+    );
+    giftCard.codigo = giftCard.codigo || this.gerarCodigoUnico();
+    await this.giftCardRepository.save(giftCard);
 
-    giftCard.status = 'enviado';
-    giftCard.updatedAt = new Date().toISOString();
+    await this.emailService.enviarGiftCardEmail({
+      nomeDestinatario: giftCard.nomeDestinatario,
+      emailDestinatario: giftCard.emailDestinatario,
+      valor: Number(giftCard.valor),
+      codigo: giftCard.codigo,
+      mensagem: giftCard.mensagem,
+    });
 
-    return {
-      giftCard,
-      email: {
-        status: 'enviado',
-        provider: 'simulado',
-      },
-    };
+    giftCard.status = GiftCardStatus.ENVIADO;
+    giftCard.dataEnvio = new Date();
+    await this.giftCardRepository.save(giftCard);
   }
 
   private gerarCodigoUnico() {
-    let code = `SPX-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    while (this.giftCards.some((item) => item.codigo === code)) {
-      code = `SPX-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    }
-    return code;
-  }
-
-  // Estrutura preparada para providers reais (Resend/Nodemailer).
-  private enviarGiftCardEmail(giftCard: GiftCardRecord) {
-    return {
-      provider: 'simulado',
-      to: giftCard.destinatarioEmail,
-      subject: `Seu gift card SportX (${giftCard.codigo})`,
-      template: 'gift-card',
-      preparedIntegrations: ['resend', 'nodemailer'],
-    };
+    return `SPX-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   }
 }

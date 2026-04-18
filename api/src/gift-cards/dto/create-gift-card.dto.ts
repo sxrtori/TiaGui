@@ -3,6 +3,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
   MaxLength,
   Min,
@@ -11,10 +12,10 @@ import {
 export class CreateGiftCardDto {
   @IsString()
   @MaxLength(120)
-  destinatarioNome: string;
+  nomeDestinatario: string;
 
   @IsEmail()
-  destinatarioEmail: string;
+  emailDestinatario: string;
 
   @IsInt()
   @Min(30)
@@ -25,4 +26,12 @@ export class CreateGiftCardDto {
   @IsString()
   @MaxLength(500)
   mensagem?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  successUrl?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  cancelUrl?: string;
 }

@@ -1,6 +1,6 @@
 # API SportX (NestJS)
 
-Backend do e-commerce esportivo com foco em autenticação, catálogo, pedidos e **frete real integrado**.
+Backend do e-commerce esportivo com foco em autenticação, catálogo, pedidos, frete e fluxo profissional de gift cards.
 
 ## Requisitos
 
@@ -15,14 +15,25 @@ Backend do e-commerce esportivo com foco em autenticação, catálogo, pedidos e
 cp .env.example .env
 ```
 
-2. Preencha as variáveis de banco e frete.
+2. Preencha as variáveis de banco, frete, Stripe e Resend.
 
-### Variáveis de frete (Frenet)
+### Frete
 
 - `FRENET_TOKEN`: token da sua conta Frenet.
 - `FRENET_QUOTE_URL`: endpoint de cotação (padrão `https://api.frenet.com.br/shipping/quote`).
 - `FRENET_TIMEOUT_MS`: timeout da consulta externa.
 - `SHIPPING_ORIGIN_CEP`: CEP de origem usado no cálculo.
+
+### Gift card e pagamentos
+
+- `STRIPE_SECRET_KEY`: chave secreta da Stripe para criar sessão de checkout.
+- `STRIPE_WEBHOOK_SECRET`: segredo do webhook para validar assinatura.
+- `FRONTEND_URL`: base de URL para success/cancel da compra do gift card.
+
+### E-mail
+
+- `RESEND_API_KEY`: chave da Resend para envio de e-mail real.
+- `RESEND_FROM_EMAIL`: remetente validado na Resend.
 
 ## Instalação
 
@@ -36,30 +47,17 @@ npm install
 npm run start:dev
 ```
 
-## Endpoints de frete
+## Endpoints principais
 
-- `GET /frete/cep/:cep` → consulta real de endereço via ViaCEP (com validação e mensagens amigáveis).
-- `POST /frete/calcular` → cotação real de frete via Frenet, com regras de frete grátis da loja.
+### Frete
 
-Payload esperado em `POST /frete/calcular`:
+- `GET /frete/cep/:cep` → consulta real de endereço via ViaCEP.
+- `POST /frete/calcular` → cotação de frete (Frenet com fallback simulado), com regra de frete grátis.
 
-```json
-{
-  "cep": "01310-100",
-  "subtotal": 259.9,
-  "itens": [
-    {
-      "sku": "123",
-      "pesoKg": 0.7,
-      "alturaCm": 12,
-      "larguraCm": 22,
-      "comprimentoCm": 32,
-      "quantidade": 1,
-      "valorUnitario": 259.9
-    }
-  ]
-}
-```
+### Gift cards
+
+- `POST /gift-cards/checkout` → cria gift card pendente + sessão Stripe.
+- `POST /payments/stripe/webhook` → confirma pagamento e dispara envio do gift card por e-mail.
 
 ## Testes e validação
 

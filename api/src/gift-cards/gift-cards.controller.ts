@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseIntPipe,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { GiftCardsService } from './gift-cards.service';
 import { CreateGiftCardDto } from './dto/create-gift-card.dto';
 
@@ -26,10 +19,5 @@ export class GiftCardsController {
   @Post('checkout')
   iniciarCheckout(@Body() dto: CreateGiftCardDto) {
     return this.giftCardsService.iniciarCheckout(dto);
-  }
-
-  @Post(':id/confirmar-pagamento')
-  confirmarPagamento(@Param('id', ParseIntPipe) id: number) {
-    return this.giftCardsService.confirmarPagamento(id);
   }
 }

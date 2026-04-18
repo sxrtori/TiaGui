@@ -11,6 +11,7 @@ import { SecurityHeadersMiddleware } from './common/middleware/security-headers.
 import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 import { FreteModule } from './frete/frete.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { GiftCardsModule } from './gift-cards/gift-cards.module';
     AvaliacoesModule,
     FreteModule,
     GiftCardsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule implements NestModule {
