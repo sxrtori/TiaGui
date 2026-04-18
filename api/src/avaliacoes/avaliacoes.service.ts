@@ -45,14 +45,19 @@ export class AvaliacoesService {
       where: duplicateWhere,
     });
     if (duplicate) {
-      throw new BadRequestException('Já existe avaliação para este pedido/produto');
+      throw new BadRequestException(
+        'Já existe avaliação para este pedido/produto',
+      );
     }
 
     if (dto.id_pedido) {
       const order = await this.pedidoRepository.findOne({
         where: { id_pedido: dto.id_pedido, id_usuario: dto.id_usuario },
       });
-      if (!order) throw new ForbiddenException('Somente compradores do pedido podem avaliar');
+      if (!order)
+        throw new ForbiddenException(
+          'Somente compradores do pedido podem avaliar',
+        );
     }
 
     const record = this.avaliacaoRepository.create(dto);
@@ -68,16 +73,23 @@ export class AvaliacoesService {
     });
     const total = reviews.length;
     const media = total
-      ? Number((reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total).toFixed(2))
+      ? Number(
+          (
+            reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total
+          ).toFixed(2),
+        )
       : 0;
 
     return { media, total, reviews };
   }
 
   async update(id: number, id_usuario: number, dto: UpdateAvaliacaoDto) {
-    const review = await this.avaliacaoRepository.findOne({ where: { id_avaliacao: id } });
+    const review = await this.avaliacaoRepository.findOne({
+      where: { id_avaliacao: id },
+    });
     if (!review) throw new NotFoundException('Avaliação não encontrada');
-    if (review.id_usuario !== id_usuario) throw new ForbiddenException('Sem permissão para editar');
+    if (review.id_usuario !== id_usuario)
+      throw new ForbiddenException('Sem permissão para editar');
 
     if (dto.comentario !== undefined && !dto.comentario.trim()) {
       throw new BadRequestException('Comentário não pode ser vazio');
@@ -88,9 +100,12 @@ export class AvaliacoesService {
   }
 
   async remove(id: number, id_usuario: number) {
-    const review = await this.avaliacaoRepository.findOne({ where: { id_avaliacao: id } });
+    const review = await this.avaliacaoRepository.findOne({
+      where: { id_avaliacao: id },
+    });
     if (!review) throw new NotFoundException('Avaliação não encontrada');
-    if (review.id_usuario !== id_usuario) throw new ForbiddenException('Sem permissão para excluir');
+    if (review.id_usuario !== id_usuario)
+      throw new ForbiddenException('Sem permissão para excluir');
     const productId = review.id_produto;
     await this.avaliacaoRepository.remove(review);
     await this.syncProductRating(productId);
@@ -98,7 +113,9 @@ export class AvaliacoesService {
   }
 
   async report(id: number) {
-    const review = await this.avaliacaoRepository.findOne({ where: { id_avaliacao: id } });
+    const review = await this.avaliacaoRepository.findOne({
+      where: { id_avaliacao: id },
+    });
     if (!review) throw new NotFoundException('Avaliação não encontrada');
     review.denunciada = true;
     return this.avaliacaoRepository.save(review);
@@ -109,7 +126,9 @@ export class AvaliacoesService {
       throw new BadRequestException('Comentário não pode ser vazio');
     }
     if (dto.id_usuario === dto.id_vendedor) {
-      throw new BadRequestException('Não é possível avaliar a própria conta de vendedor');
+      throw new BadRequestException(
+        'Não é possível avaliar a própria conta de vendedor',
+      );
     }
 
     const seller = await this.usuarioRepository.findOne({
@@ -139,16 +158,26 @@ export class AvaliacoesService {
     });
     const total = reviews.length;
     const media = total
-      ? Number((reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total).toFixed(2))
+      ? Number(
+          (
+            reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total
+          ).toFixed(2),
+        )
       : 0;
     return { media, total, reviews };
   }
 
   private async syncProductRating(id_produto: number) {
-    const reviews = await this.avaliacaoRepository.find({ where: { id_produto } });
+    const reviews = await this.avaliacaoRepository.find({
+      where: { id_produto },
+    });
     const total = reviews.length;
     const media = total
-      ? Number((reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total).toFixed(2))
+      ? Number(
+          (
+            reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total
+          ).toFixed(2),
+        )
       : 0;
     await this.produtoRepository.update(id_produto, {
       media_avaliacao: media,
@@ -157,10 +186,16 @@ export class AvaliacoesService {
   }
 
   private async syncSellerRating(id_vendedor: number) {
-    const reviews = await this.avaliacaoVendedorRepository.find({ where: { id_vendedor } });
+    const reviews = await this.avaliacaoVendedorRepository.find({
+      where: { id_vendedor },
+    });
     const total = reviews.length;
     const media = total
-      ? Number((reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total).toFixed(2))
+      ? Number(
+          (
+            reviews.reduce((sum, r) => sum + Number(r.nota || 0), 0) / total
+          ).toFixed(2),
+        )
       : 0;
     const blocked = total >= 15 && media < 3.5;
     await this.usuarioRepository.update(id_vendedor, {

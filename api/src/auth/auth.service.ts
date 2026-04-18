@@ -9,7 +9,10 @@ export class AuthService {
   constructor(private readonly usuariosService: UsuariosService) {}
 
   async login(loginDto: LoginDto) {
-    const usuario = await this.usuariosService.login(loginDto.email, loginDto.senha);
+    const usuario = await this.usuariosService.login(
+      loginDto.email,
+      loginDto.senha,
+    );
 
     const access_token = generateAccessToken({
       sub: usuario.id_usuario,

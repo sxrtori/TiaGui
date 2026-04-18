@@ -39,7 +39,10 @@ export function verifyAccessToken(token: string): TokenPayload | null {
   if (parts.length !== 3) return null;
 
   const [encodedHeader, encodedPayload, receivedSignature] = parts;
-  const expectedSignature = sign(`${encodedHeader}.${encodedPayload}`, getSecret());
+  const expectedSignature = sign(
+    `${encodedHeader}.${encodedPayload}`,
+    getSecret(),
+  );
 
   const received = Buffer.from(receivedSignature);
   const expected = Buffer.from(expectedSignature);
@@ -58,5 +61,9 @@ export function verifyAccessToken(token: string): TokenPayload | null {
 }
 
 function getSecret(): string {
-  return process.env.AUTH_TOKEN_SECRET || 'sportx-dev-secret';
+  return (
+    process.env.JWT_SECRET ||
+    process.env.AUTH_TOKEN_SECRET ||
+    'sportx-dev-secret'
+  );
 }

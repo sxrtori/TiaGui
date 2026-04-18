@@ -9,7 +9,15 @@ import { Usuario } from '../usuarios/entities/usuario.entity';
 import { Produto } from '../produtos/entities/produto.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Avaliacao, Pedido, AvaliacaoVendedor, Usuario, Produto])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Avaliacao,
+      Pedido,
+      AvaliacaoVendedor,
+      Usuario,
+      Produto,
+    ]),
+  ],
   providers: [AvaliacoesService],
   controllers: [AvaliacoesController],
 })

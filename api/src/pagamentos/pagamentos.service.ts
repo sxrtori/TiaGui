@@ -24,7 +24,9 @@ export class PagamentosService {
   }
 
   async findOne(id: number) {
-    const pagamento = await this.pagamentoRepository.findOne({ where: { id_pagamento: id } });
+    const pagamento = await this.pagamentoRepository.findOne({
+      where: { id_pagamento: id },
+    });
     if (!pagamento) throw new NotFoundException('Pagamento não encontrado');
     return pagamento;
   }

@@ -1,4 +1,8 @@
-import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+} from '@nestjs/common';
 
 export type CepEndereco = {
   cep: string;
@@ -27,7 +31,9 @@ export class CepService {
     try {
       const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
       if (!response.ok) {
-        throw new BadGatewayException('Não foi possível consultar o CEP no momento.');
+        throw new BadGatewayException(
+          'Não foi possível consultar o CEP no momento.',
+        );
       }
       const data = (await response.json()) as {
         erro?: boolean;
@@ -72,7 +78,10 @@ export class CepService {
       '9': { estado: 'RS', cidade: 'Porto Alegre' },
     };
 
-    const guess = stateByPrefix[cep[0]] || { estado: 'SP', cidade: 'São Paulo' };
+    const guess = stateByPrefix[cep[0]] || {
+      estado: 'SP',
+      cidade: 'São Paulo',
+    };
     return {
       cep,
       rua: 'Endereço não identificado (fallback)',

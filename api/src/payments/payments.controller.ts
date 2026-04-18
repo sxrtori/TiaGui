@@ -20,10 +20,16 @@ export class PaymentsController {
       return { received: false };
     }
 
-    const event = this.stripeService.verifyWebhookSignature(req.rawBody, signature);
+    const event = this.stripeService.verifyWebhookSignature(
+      req.rawBody,
+      signature,
+    );
 
     if (event.type === 'checkout.session.completed') {
-      await this.giftCardsService.processarPagamentoConfirmado(event.data.object, event.id);
+      await this.giftCardsService.processarPagamentoConfirmado(
+        event.data.object,
+        event.id,
+      );
     }
 
     return { received: true };

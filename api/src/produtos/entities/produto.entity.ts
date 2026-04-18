@@ -1,89 +1,88 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { Categoria } from './categoria.entity';
+import { ProdutoCor } from './produto-cor.entity';
+import { ProdutoImagem } from './produto-imagem.entity';
+import { ProdutoTamanho } from './produto-tamanho.entity';
+import { ProdutoVariacao } from './produto-variacao.entity';
 
 @Entity('produto')
 export class Produto {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ name: 'id_produto' })
   id_produto: number;
 
-  @Column()
+  @Column({ name: 'id_categoria' })
   id_categoria: number;
 
-  @Column({ length: 150 })
+  @Column({ name: 'nome', length: 150 })
   nome: string;
 
-  @Column({ type: 'text', nullable: true })
-  descricao: string;
+  @Column({ name: 'descricao', type: 'text', nullable: true })
+  descricao?: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'preco', type: 'decimal', precision: 10, scale: 2 })
   preco: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  preco_promocional?: number;
+  @Column({ name: 'genero', length: 20, nullable: true })
+  genero?: string;
 
-  @Column({ type: 'int', default: 0 })
-  estoque: number;
-
-  @Column({ type: 'text', nullable: true })
-  imagem: string;
-
-  @Column({ type: 'text', nullable: true })
-  galeria_imagens?: string;
-
-  @Column({ length: 20, nullable: true })
-  genero: string;
-
-  @Column({ length: 50, nullable: true })
-  numeracao: string;
-
-  @Column({ length: 80, nullable: true })
-  marca?: string;
-
-  @Column({ length: 180, nullable: true, unique: true })
-  slug?: string;
-
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  desconto: number;
-
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  cashback: number;
-
-  @Column({ length: 80, nullable: true })
-  modalidade?: string;
-
-  @Column({ type: 'boolean', default: false })
-  lancamento: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  promocao_ativa: boolean;
-
-  @Column({ type: 'int', nullable: true })
-  id_vendedor?: number;
-
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'ativo', type: 'boolean', default: true })
   ativo: boolean;
 
-  @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
+  @Column({ name: 'destaque', type: 'boolean', default: false })
+  destaque: boolean;
+
+  @Column({ name: 'marca', length: 100, nullable: true })
+  marca?: string;
+
+  @Column({ name: 'slug', length: 180, nullable: true })
+  slug?: string;
+
+  @Column({
+    name: 'media_avaliacao',
+    type: 'decimal',
+    precision: 3,
+    scale: 2,
+    default: 0,
+  })
   media_avaliacao: number;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'total_avaliacoes', type: 'int', default: 0 })
   total_avaliacoes: number;
 
-
-  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0.3 })
-  peso_kg: number;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 5 })
-  altura_cm: number;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 20 })
-  largura_cm: number;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 30 })
-  comprimento_cm: number;
-
-  @Column({ length: 10, default: '01001-000' })
-  origem_cep: string;
-
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'created_at',
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   created_at: Date;
+
+  @Column({
+    name: 'updated_at',
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  updated_at: Date;
+
+  @ManyToOne(() => Categoria, (categoria) => categoria.produtos)
+  @JoinColumn({ name: 'id_categoria' })
+  categoria?: Categoria;
+
+  @OneToMany(() => ProdutoImagem, (imagem) => imagem.produto)
+  imagens: ProdutoImagem[];
+
+  @OneToMany(() => ProdutoVariacao, (variacao) => variacao.produto)
+  variacoes: ProdutoVariacao[];
+
+  @OneToMany(() => ProdutoCor, (cor) => cor.produto)
+  cores: ProdutoCor[];
+
+  @OneToMany(() => ProdutoTamanho, (tamanho) => tamanho.produto)
+  tamanhos: ProdutoTamanho[];
 }

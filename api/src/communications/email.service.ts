@@ -16,11 +16,17 @@ export class EmailService {
     mensagem?: string;
   }) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
-    const from = this.configService.get<string>('RESEND_FROM_EMAIL') || 'SportX <onboarding@resend.dev>';
+    const from =
+      this.configService.get<string>('RESEND_FROM_EMAIL') ||
+      'SportX <onboarding@resend.dev>';
 
     if (!apiKey) {
       this.logger.warn('RESEND_API_KEY não configurada. E-mail não enviado.');
-      return { status: 'skipped', provider: 'resend', reason: 'missing_api_key' };
+      return {
+        status: 'skipped',
+        provider: 'resend',
+        reason: 'missing_api_key',
+      };
     }
 
     const html = buildGiftCardEmailTemplate(payload);
@@ -45,7 +51,9 @@ export class EmailService {
       throw new Error('Não foi possível enviar o e-mail do gift card.');
     }
 
-    this.logger.log(`Gift card enviado com sucesso para ${payload.emailDestinatario}.`);
+    this.logger.log(
+      `Gift card enviado com sucesso para ${payload.emailDestinatario}.`,
+    );
     return { status: 'sent', provider: 'resend' };
   }
 }

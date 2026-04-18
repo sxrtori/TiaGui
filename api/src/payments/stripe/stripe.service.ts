@@ -38,18 +38,30 @@ export class StripeService {
     params.set('metadata[giftCardId]', String(payload.giftCardId));
     params.set('line_items[0][quantity]', '1');
     params.set('line_items[0][price_data][currency]', 'brl');
-    params.set('line_items[0][price_data][unit_amount]', String(Math.round(Number(payload.valor || 0) * 100)));
-    params.set('line_items[0][price_data][product_data][name]', `Gift Card SportX - ${payload.nomeDestinatario}`);
-    params.set('line_items[0][price_data][product_data][description]', 'Gift card digital SportX');
+    params.set(
+      'line_items[0][price_data][unit_amount]',
+      String(Math.round(Number(payload.valor || 0) * 100)),
+    );
+    params.set(
+      'line_items[0][price_data][product_data][name]',
+      `Gift Card SportX - ${payload.nomeDestinatario}`,
+    );
+    params.set(
+      'line_items[0][price_data][product_data][description]',
+      'Gift card digital SportX',
+    );
 
-    const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+    const response = await fetch(
+      'https://api.stripe.com/v1/checkout/sessions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
       },
-      body: params,
-    });
+    );
 
     if (!response.ok) {
       const details = await response.text();
@@ -62,9 +74,13 @@ export class StripeService {
   }
 
   verifyWebhookSignature(payload: Buffer, signatureHeader: string) {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET',
+    );
     if (!webhookSecret) {
-      this.logger.warn('STRIPE_WEBHOOK_SECRET não configurado. Webhook ignorado.');
+      this.logger.warn(
+        'STRIPE_WEBHOOK_SECRET não configurado. Webhook ignorado.',
+      );
       throw new Error('Webhook secret não configurado.');
     }
 
