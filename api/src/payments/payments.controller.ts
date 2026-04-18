@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   BadRequestException,
   Body,
   Controller,
@@ -31,6 +32,12 @@ export class PaymentsController {
     }
 
     const pedido = await this.pedidosService.findOne(id);
+
+    if (pedido.id_pagamento) {
+      throw new ConflictException(
+        'PaymentIntent já foi iniciado para este pedido.',
+      );
+    }
 
     if (String(pedido.forma_pagamento).toLowerCase() !== 'cartao') {
       throw new BadRequestException(
@@ -74,10 +81,16 @@ export class PaymentsController {
       return { received: false };
     }
 
-    const event = this.stripeService.verifyWebhookSignature(
-      req.rawBody,
-      signature,
-    );
+    let event: {
+      id: string;
+      type: string;
+      data: { object: Record<string, unknown> };
+    };
+    try {
+      event = this.stripeService.verifyWebhookSignature(req.rawBody, signature);
+    } catch {
+      throw new BadRequestException('Assinatura Stripe inválida.');
+    }
 
     if (event.type === 'checkout.session.completed') {
       await this.giftCardsService.processarPagamentoConfirmado(
