@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TokenPayload } from '../auth/token.util';
+import { EntregaOpcao } from '../frete/entities/entrega-opcao.entity';
 import { CreatePedidoDto } from './dto/create-pedido.dto';
 import { UpdatePedidoDto } from './dto/update-pedido.dto';
 import { ItemPedido } from './entities/item-pedido.entity';
@@ -16,6 +21,8 @@ export class PedidosService {
     private readonly pedidoRepository: Repository<Pedido>,
     @InjectRepository(ItemPedido)
     private readonly itemPedidoRepository: Repository<ItemPedido>,
+    @InjectRepository(EntregaOpcao)
+    private readonly entregaOpcaoRepository: Repository<EntregaOpcao>,
   ) {}
 
   async findAll(user: TokenPayload): Promise<Pedido[]> {
@@ -51,6 +58,24 @@ export class PedidosService {
     const subtotal = this.roundMoney(createPedidoDto.subtotal);
     const desconto = this.roundMoney(createPedidoDto.desconto || 0);
     const isFreteGratis = subtotal >= FREE_SHIPPING_THRESHOLD;
+    const formaPagamento = String(createPedidoDto.forma_pagamento || '').toLowerCase();
+
+    if (!['cartao', 'pix', 'boleto'].includes(formaPagamento)) {
+      throw new BadRequestException('Forma de pagamento inválida');
+    }
+
+    const entregaSelecionada = createPedidoDto.id_entrega_opcao
+      ? await this.entregaOpcaoRepository.findOne({
+          where: { id_entrega_opcao: createPedidoDto.id_entrega_opcao, ativa: true },
+        })
+      : null;
+
+    if (!isFreteGratis && !entregaSelecionada) {
+      throw new BadRequestException(
+        'Selecione uma opção de entrega para pedidos abaixo de R$ 400.',
+      );
+    }
+
     const valorFrete = isFreteGratis
       ? 0
       : this.roundMoney(createPedidoDto.valor_frete);
@@ -61,7 +86,7 @@ export class PedidosService {
         id_usuario: createPedidoDto.id_usuario,
         id_endereco: createPedidoDto.id_endereco || undefined,
         id_pagamento: createPedidoDto.id_pagamento,
-        id_entrega_opcao: createPedidoDto.id_entrega_opcao,
+        id_entrega_opcao: entregaSelecionada?.id_entrega_opcao,
         status: createPedidoDto.status,
         subtotal,
         desconto,
@@ -71,7 +96,7 @@ export class PedidosService {
         origem_cep: createPedidoDto.origem_cep,
         prazo_entrega_min_dias: createPedidoDto.prazo_entrega_min_dias,
         prazo_entrega_max_dias: createPedidoDto.prazo_entrega_max_dias,
-        forma_pagamento: createPedidoDto.forma_pagamento,
+        forma_pagamento: formaPagamento,
         codigo_rastreio: createPedidoDto.codigo_rastreio,
         observacoes_entrega: createPedidoDto.observacoes_entrega,
         resumo_checkout:

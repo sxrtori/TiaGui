@@ -1,16 +1,10 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CalcularFreteDto } from './dto/calcular-frete.dto';
+import { EntregaOpcao } from './entities/entrega-opcao.entity';
 import { CepService } from './services/cep.service';
-import type {
-  CotacaoFreteResultado,
-  FreteProvider,
-} from './providers/frete-provider.interface';
 
 const FREE_SHIPPING_THRESHOLD = 400;
 
@@ -20,8 +14,9 @@ export class FreteService {
 
   constructor(
     private readonly cepService: CepService,
-    @Inject('FreteProvider') private readonly provider: FreteProvider,
     private readonly configService: ConfigService,
+    @InjectRepository(EntregaOpcao)
+    private readonly entregaOpcaoRepository: Repository<EntregaOpcao>,
   ) {
     this.origemCep = this.cepService.normalize(
       this.configService.get<string>('SHIPPING_ORIGIN_CEP') || '01001-000',
@@ -41,113 +36,80 @@ export class FreteService {
 
     const destinoCep = this.cepService.normalize(payload.cep);
     const enderecoDestino = await this.cepService.buscarEndereco(destinoCep);
-    const subtotal = Number(payload.subtotal || 0);
+    const subtotal = this.roundMoney(payload.subtotal || 0);
 
-    const itensNormalizados = payload.itens.map((item) => ({
-      ...item,
-      valorUnitario: Number(item.valorUnitario ?? item.preco ?? 0),
-    }));
+    const pesoTotal = payload.itens.reduce((sum, item) => {
+      const peso = Number(item.pesoKg || 0);
+      const quantidade = Math.max(1, Number(item.quantidade || 1));
+      if (!Number.isFinite(peso) || peso <= 0) {
+        throw new BadRequestException(
+          'Item com peso inválido. Verifique as variações do produto.',
+        );
+      }
+      return sum + peso * quantidade;
+    }, 0);
 
-    if (
-      itensNormalizados.some(
-        (item) =>
-          !Number.isFinite(item.valorUnitario) || item.valorUnitario < 0,
-      )
-    ) {
-      throw new BadRequestException('Item de frete com valor inválido.');
-    }
+    const opcoesAtivas = await this.entregaOpcaoRepository.find({
+      where: { ativa: true },
+      order: { ordem: 'ASC', id_entrega_opcao: 'ASC' },
+    });
 
-    let cotacao: CotacaoFreteResultado;
-    let providerName = 'frenet';
-    try {
-      cotacao = await this.provider.calcular({
-        ...payload,
-        itens: itensNormalizados,
-        cep: destinoCep,
-        cepOrigem: this.origemCep,
-      });
-    } catch {
-      cotacao = this.calcularFreteSimulado(destinoCep);
-      providerName = 'simulado';
-    }
-
-    if (!cotacao.opcoes.length) {
-      throw new ServiceUnavailableException(
-        'Nenhuma opção de frete disponível para este CEP.',
+    if (!opcoesAtivas.length) {
+      throw new BadRequestException(
+        'Nenhuma opção de entrega ativa foi encontrada no banco.',
       );
     }
 
-    const maisRapida = [...cotacao.opcoes].sort(
-      (a, b) => a.prazoMin - b.prazoMin,
-    )[0];
-    const maisBarata = [...cotacao.opcoes].sort((a, b) => a.valor - b.valor)[0];
+    const freteGratisAtivo = subtotal >= FREE_SHIPPING_THRESHOLD;
+    const distanceMultiplier = this.distanceMultiplier(this.origemCep, destinoCep);
 
-    const opcoes = cotacao.opcoes.map((option) => {
-      const isFree = subtotal >= FREE_SHIPPING_THRESHOLD;
+    const opcoes = opcoesAtivas.map((option) => {
+      const valorBase = Number(option.valor_base || 0);
+      const valorPorKg = Number(option.valor_por_kg || 0);
+      const bruto = this.roundMoney(
+        (valorBase + valorPorKg * pesoTotal) * distanceMultiplier,
+      );
+      const valor = freteGratisAtivo ? 0 : bruto;
       return {
-        ...option,
-        valorOriginal: option.valor,
-        valor: isFree ? 0 : option.valor,
-        freteAbsorvidoPelaLoja: isFree,
-        destaque:
-          option.id === maisRapida.id
-            ? 'mais-rapida'
-            : option.id === maisBarata.id
-              ? 'melhor-preco'
-              : undefined,
+        id: String(option.id_entrega_opcao),
+        id_entrega_opcao: option.id_entrega_opcao,
+        nome: option.nome,
+        descricao: option.descricao,
+        prazoMin: option.prazo_min_dias,
+        prazoMax: option.prazo_max_dias,
+        valorOriginal: bruto,
+        valor,
+        freteAbsorvidoPelaLoja: freteGratisAtivo,
+        moeda: 'BRL' as const,
       };
     });
 
     return {
-      origem: {
-        cep: this.origemCep,
-      },
+      origem: { cep: this.origemCep },
       destinoCep,
       destinoEndereco: enderecoDestino,
-      freteGratisAtivo: subtotal >= FREE_SHIPPING_THRESHOLD,
+      subtotal,
+      pesoTotalKg: Number(pesoTotal.toFixed(3)),
+      freteGratisAtivo,
       limiteFreteGratis: FREE_SHIPPING_THRESHOLD,
       opcoes,
-      provider: providerName,
+      provider: 'database',
       calculadoEm: new Date().toISOString(),
     };
   }
 
-  private calcularFreteSimulado(destinoCep: string): CotacaoFreteResultado {
-    return {
-      origemCep: this.origemCep,
-      destinoCep,
-      opcoes: [
-        {
-          id: 'economico',
-          nome: 'Econômico',
-          transportadora: 'SportX Entregas',
-          codigoServico: 'ECO',
-          prazoMin: 7,
-          prazoMax: 10,
-          valor: 12.9,
-          moeda: 'BRL' as const,
-        },
-        {
-          id: 'padrao',
-          nome: 'Padrão',
-          transportadora: 'SportX Entregas',
-          codigoServico: 'PAD',
-          prazoMin: 3,
-          prazoMax: 5,
-          valor: 18.9,
-          moeda: 'BRL' as const,
-        },
-        {
-          id: 'expresso',
-          nome: 'Expresso',
-          transportadora: 'SportX Entregas',
-          codigoServico: 'EXP',
-          prazoMin: 1,
-          prazoMax: 2,
-          valor: 29.9,
-          moeda: 'BRL' as const,
-        },
-      ],
-    };
+  private distanceMultiplier(origemCep: string, destinoCep: string): number {
+    const origemPrefix = Number(origemCep.replace(/\D/g, '').slice(0, 2));
+    const destinoPrefix = Number(destinoCep.replace(/\D/g, '').slice(0, 2));
+    const delta = Math.abs(origemPrefix - destinoPrefix);
+
+    if (delta <= 5) return 1;
+    if (delta <= 15) return 1.12;
+    if (delta <= 30) return 1.2;
+    return 1.35;
+  }
+
+  private roundMoney(value: number): number {
+    return Number(Number(value || 0).toFixed(2));
   }
 }

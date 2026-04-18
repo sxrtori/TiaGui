@@ -8,8 +8,10 @@ const resolveApiBaseUrl = () => {
   const { protocol, hostname } = window.location;
   const frontendPort = window.location.port;
   const commonFrontendPorts = new Set(['', '80', '443', '5500', '5173', '4173', '8080', '4200']);
-  const port = commonFrontendPorts.has(frontendPort) ? '3000' : frontendPort;
-  return `${protocol}//${hostname}:${port}`;
+  const backendPort = '3001';
+  if (commonFrontendPorts.has(frontendPort)) return `${protocol}//${hostname}:${backendPort}`;
+  if (frontendPort === backendPort) return `${protocol}//${hostname}:3000`;
+  return `${protocol}//${hostname}:${backendPort}`;
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -132,7 +134,7 @@ async function apiRequest(path, options = {}) {
     let apiMessage = '';
     try {
       const data = await response.clone().json();
-      apiMessage = data?.message;
+      apiMessage = data?.message || data?.error || '';
       if (Array.isArray(apiMessage)) apiMessage = apiMessage[0];
     } catch (_e) {
       try {
@@ -334,6 +336,18 @@ function normalizeUiErrorMessage(error, fallback = 'Não foi possível concluir 
     return 'Sua sessão não tem permissão para esta ação.';
   }
   if (normalized.includes('invalid token') || normalized.includes('jwt')) {
+    return 'Sua sessão expirou. Faça login novamente.';
+  }
+  if (normalized.includes('email já cadastrado')) {
+    return 'Este e-mail já está cadastrado.';
+  }
+  if (normalized.includes('cpf já cadastrado')) {
+    return 'Este CPF já está cadastrado.';
+  }
+  if (normalized.includes('email ou senha inválidos')) {
+    return 'Credenciais inválidas. Verifique e-mail e senha.';
+  }
+  if (normalized.includes('token ausente') || normalized.includes('token inválido')) {
     return 'Sua sessão expirou. Faça login novamente.';
   }
   return message;
@@ -1648,7 +1662,7 @@ function setupAuthUi() {
     const selectedPayment = document.getElementById('paymentMethod')?.value || 'credito';
     const payload = {
       id_usuario: Number(state.currentUser?.id_usuario || 0),
-      id_entrega_opcao: undefined,
+      id_entrega_opcao: Number(state.shippingOption?.id_entrega_opcao || state.shippingOption?.id || 0) || undefined,
       status: 'pendente',
       forma_pagamento: paymentMap[selectedPayment] || 'cartao',
       subtotal: Number(subtotal.toFixed(2)),
