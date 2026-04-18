@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProdutosModule } from './produtos/produtos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { PedidosModule } from './pedidos/pedidos.module';
@@ -11,12 +12,30 @@ import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StorageModule } from './storage/storage.module';
 
+const isDatabaseEnabled = process.env.ENABLE_DATABASE === 'true';
+const databaseUrl = process.env.DATABASE_URL;
+
+const databaseImports =
+  isDatabaseEnabled && databaseUrl
+    ? [
+        // TODO(db): para reativar PostgreSQL em produção, mantenha ENABLE_DATABASE=true
+        // e configure DATABASE_URL. Os módulos TypeORM podem voltar a ser importados no AppModule.
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: databaseUrl,
+          autoLoadEntities: true,
+          synchronize: false,
+        }),
+      ]
+    : [];
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    // Banco desativado temporariamente. Reativar TypeORM aqui quando PostgreSQL estiver pronto.
+    ...databaseImports,
+    // Fallback atual sem banco: dados em memória para manter a API funcionando.
     StorageModule,
     ProdutosModule,
     UsuariosModule,

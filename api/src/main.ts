@@ -4,9 +4,15 @@ import { raw, Request } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const dbEnabled = process.env.ENABLE_DATABASE === 'true';
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log'],
   });
+
+  if (!dbEnabled) {
+    // TODO(db): definir ENABLE_DATABASE=true + DATABASE_URL para reativar PostgreSQL.
+    console.log('[bootstrap] PostgreSQL desativado: API iniciada com armazenamento em memória.');
+  }
 
   app.use(
     '/payments/stripe/webhook',
