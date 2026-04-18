@@ -5,7 +5,6 @@ import {
   Controller,
   Headers,
   HttpCode,
-  NotFoundException,
   Post,
   Req,
 } from '@nestjs/common';
@@ -71,6 +70,55 @@ export class PaymentsController {
     };
   }
 
+  @Post('pix/charge')
+  async createPixCharge(@Body('pedidoId') pedidoId: number) {
+    const id = Number(pedidoId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new BadRequestException('pedidoId inválido.');
+    }
+
+    const pedido = await this.pedidosService.findOne(id);
+    if (String(pedido.forma_pagamento).toLowerCase() !== 'pix') {
+      throw new BadRequestException('Cobrança Pix disponível apenas para pedidos Pix.');
+    }
+
+    if (pedido.id_pagamento) {
+      const pagamentoExistente = await this.pagamentosService.findOne(
+        pedido.id_pagamento,
+      );
+      const pixData = this.extractPixData(pagamentoExistente.token_gateway);
+      if (pixData) {
+        return {
+          pedidoId: pedido.id_pedido,
+          ...pixData,
+          status: pagamentoExistente.status || pixData.status || 'pendente',
+        };
+      }
+    }
+
+    const pixCharge = this.buildPixCharge({
+      pedidoId: pedido.id_pedido,
+      amount: Number(pedido.total),
+    });
+
+    const pagamento = await this.pagamentosService.create({
+      id_usuario: pedido.id_usuario,
+      tipo: 'pix',
+      token_gateway: JSON.stringify(pixCharge),
+      status: 'pendente',
+    });
+
+    await this.pedidosService.update(pedido.id_pedido, {
+      id_pagamento: pagamento.id_pagamento,
+    });
+
+    return {
+      pedidoId: pedido.id_pedido,
+      ...pixCharge,
+      status: pagamento.status || 'pendente',
+    };
+  }
+
   @Post('stripe/webhook')
   @HttpCode(200)
   async stripeWebhook(
@@ -111,7 +159,7 @@ export class PaymentsController {
       const pedidoId = Number(stripeObject.metadata?.pedidoId || 0);
 
       if (!intentId || !pedidoId) {
-        throw new NotFoundException('Metadados do pagamento inválidos.');
+        return { received: true };
       }
 
       const pedido = await this.pedidosService.findOne(pedidoId);
@@ -133,5 +181,66 @@ export class PaymentsController {
     }
 
     return { received: true };
+  }
+
+  private buildPixCharge(payload: { pedidoId: number; amount: number }) {
+    const amountValue = Number(payload.amount || 0).toFixed(2);
+    const txid = `PED${payload.pedidoId}-${Date.now()}`.slice(0, 25);
+    const pixCopiaCola = [
+      '000201',
+      '26330014BR.GOV.BCB.PIX0111sportx@pix',
+      '52040000',
+      '5303986',
+      `540${amountValue.length}${amountValue}`,
+      '5802BR',
+      '5912SPORTX STORE',
+      '6009SAO PAULO',
+      `62110507${txid}`,
+      '6304ABCD',
+    ].join('');
+    const qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(
+      pixCopiaCola,
+    )}&size=280`;
+
+    return {
+      provider: 'pix-manual',
+      txid,
+      pixCopiaCola,
+      qrCodeUrl,
+      status: 'pendente',
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    };
+  }
+
+  private extractPixData(tokenGateway?: string | null):
+    | {
+        provider: string;
+        txid: string;
+        pixCopiaCola: string;
+        qrCodeUrl: string;
+        status: string;
+        expiresAt: string;
+      }
+    | null {
+    if (!tokenGateway) return null;
+    try {
+      const parsed = JSON.parse(tokenGateway) as Record<string, unknown>;
+      if (
+        typeof parsed.pixCopiaCola === 'string' &&
+        typeof parsed.qrCodeUrl === 'string'
+      ) {
+        return {
+          provider: String(parsed.provider || 'pix-manual'),
+          txid: String(parsed.txid || ''),
+          pixCopiaCola: parsed.pixCopiaCola,
+          qrCodeUrl: parsed.qrCodeUrl,
+          status: String(parsed.status || 'pendente'),
+          expiresAt: String(parsed.expiresAt || ''),
+        };
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 }

@@ -587,6 +587,10 @@
             </div>
 
             <div id="cardFields" class="checkout-card-fields full">
+              <div class="checkout-payment-card-header full">
+                <strong>Pagamento com cartão</strong>
+                <span>Ambiente seguro Stripe</span>
+              </div>
               <div class="input-group full">
                 <label>Dados do cartão (Stripe)</label>
                 <div id="paymentElement" class="stripe-payment-element"></div>
@@ -601,6 +605,21 @@
                 </select>
               </div>
               <p id="paymentFeedback" class="payment-feedback" role="status" aria-live="polite"></p>
+            </div>
+
+            <div id="pixFields" class="checkout-pix-fields full" style="display:none;">
+              <div class="pix-header">
+                <strong>Pagamento via Pix</strong>
+                <span>Escaneie o QR Code ou copie o código</span>
+              </div>
+              <div id="pixResult" class="pix-result-empty">Finalize o pedido para gerar o QR Code Pix.</div>
+            </div>
+
+            <div id="boletoFields" class="checkout-boleto-fields full" style="display:none;">
+              <div class="pix-header">
+                <strong>Pagamento via boleto</strong>
+                <span>Seu boleto será gerado após confirmar o pedido.</span>
+              </div>
             </div>
           </div>
         </div>

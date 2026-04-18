@@ -141,6 +141,38 @@ function setPaymentFeedback(message, type = 'info') {
   feedback.className = `payment-feedback${message ? ` ${type}` : ''}`;
 }
 
+function renderPixResult(pixCharge) {
+  const pixResult = document.getElementById('pixResult');
+  if (!pixResult) return;
+  if (!pixCharge?.pixCopiaCola || !pixCharge?.qrCodeUrl) {
+    pixResult.className = 'pix-result-empty';
+    pixResult.textContent = 'Não foi possível gerar o Pix neste momento.';
+    return;
+  }
+  pixResult.className = 'pix-result';
+  pixResult.innerHTML = `
+    <div class="pix-qr-wrap">
+      <img src="${pixCharge.qrCodeUrl}" alt="QR Code Pix do pedido ${pixCharge.pedidoId || ''}" />
+    </div>
+    <div class="pix-code-wrap">
+      <label>Código Pix copia e cola</label>
+      <textarea id="pixCopyCode" readonly>${pixCharge.pixCopiaCola}</textarea>
+      <button type="button" class="btn btn-light full-width top-gap-sm" id="copyPixCodeBtn">Copiar código Pix</button>
+    </div>
+    <p class="pix-status">Status: <strong>${pixCharge.status || 'pendente'}</strong>${pixCharge.expiresAt ? ` • Expira em: ${new Date(pixCharge.expiresAt).toLocaleString('pt-BR')}` : ''}</p>
+  `;
+  document.getElementById('copyPixCodeBtn')?.addEventListener('click', async () => {
+    const code = document.getElementById('pixCopyCode')?.value || '';
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast('Código Pix copiado.');
+    } catch {
+      showToast('Não foi possível copiar automaticamente. Copie manualmente.');
+    }
+  });
+}
+
 function resetStripeCheckoutState() {
   state.stripe = {
     pedidoId: null,
@@ -154,6 +186,7 @@ function resetStripeCheckoutState() {
   }
   stripeElements = null;
   setPaymentFeedback('');
+  renderPixResult(null);
 }
 
 async function mountStripePaymentElement(clientSecret, publicKey) {
@@ -1729,14 +1762,33 @@ function setupAuthUi() {
   const installmentsSelect = document.getElementById('installmentsSelect');
   const paymentMethod = document.getElementById('paymentMethod');
   const cardFields = document.getElementById('cardFields');
+  const pixFields = document.getElementById('pixFields');
+  const boletoFields = document.getElementById('boletoFields');
   const syncPaymentInstallments = () => {
-    if (!paymentMethod || !installmentsGroup || !installmentsSelect || !cardFields) return;
-    const cardSelected = paymentMethod.value === 'cartao';
+    if (!paymentMethod || !installmentsGroup || !installmentsSelect || !cardFields || !pixFields || !boletoFields) return;
+    const normalizedMethod = ['cartao', 'pix', 'boleto'].includes(paymentMethod.value) ? paymentMethod.value : 'cartao';
+    const cardSelected = normalizedMethod === 'cartao';
+    const pixSelected = normalizedMethod === 'pix';
+    const boletoSelected = normalizedMethod === 'boleto';
+    paymentMethod.value = normalizedMethod;
     cardFields.style.display = cardSelected ? '' : 'none';
+    pixFields.style.display = pixSelected ? '' : 'none';
+    boletoFields.style.display = boletoSelected ? '' : 'none';
     installmentsGroup.style.display = cardSelected ? '' : 'none';
     installmentsSelect.disabled = !cardSelected;
     if (!cardSelected) installmentsSelect.value = '1x sem juros';
-    if (!cardSelected) resetStripeCheckoutState();
+    if (!cardSelected) {
+      resetStripeCheckoutState();
+      if (pixSelected) {
+        setPaymentFeedback('Finalize o pedido para gerar o QR Code Pix.', 'warn');
+      } else if (boletoSelected) {
+        setPaymentFeedback('Finalize o pedido para gerar o boleto.', 'warn');
+      } else {
+        setPaymentFeedback('');
+      }
+    } else {
+      renderPixResult(null);
+    }
   };
   paymentMethod?.addEventListener('change', syncPaymentInstallments);
   syncPaymentInstallments();
@@ -1752,8 +1804,10 @@ function setupAuthUi() {
     if (!address.rua || !address.bairro || !address.cidade || !address.estado || !address.numero) {
       return showToast('Preencha endereço completo para finalizar o pedido.');
     }
-    const selectedPayment = document.getElementById('paymentMethod')?.value || 'cartao';
+    const selectedPaymentRaw = document.getElementById('paymentMethod')?.value || 'cartao';
+    const selectedPayment = ['cartao', 'pix', 'boleto'].includes(selectedPaymentRaw) ? selectedPaymentRaw : 'cartao';
     const isCardPayment = selectedPayment === 'cartao';
+    const isPixPayment = selectedPayment === 'pix';
     console.log(state.currentUser);
     if (!state.currentUser?.id_usuario) {
       showToast('Você precisa estar logado');
@@ -1765,7 +1819,7 @@ function setupAuthUi() {
         ? Number(state.shippingOption.id)
         : undefined,
       status: 'pendente',
-      forma_pagamento: ['cartao', 'pix', 'boleto'].includes(selectedPayment) ? selectedPayment : 'cartao',
+      forma_pagamento: selectedPayment,
       subtotal: Number(subtotal.toFixed(2)),
       valor_frete: Number(shipping.toFixed(2)),
       desconto: 0,
@@ -1832,6 +1886,22 @@ function setupAuthUi() {
         return;
       }
 
+      if (isPixPayment && pedidoId > 0) {
+        setPaymentFeedback('Gerando cobrança Pix...', 'warn');
+        const pixCharge = await apiRequest('/payments/pix/charge', {
+          method: 'POST',
+          body: JSON.stringify({ pedidoId }),
+        });
+        renderPixResult(pixCharge);
+        setPaymentFeedback('Pix gerado. Escaneie o QR Code ou copie o código.', 'success');
+        showToast('Pix gerado com sucesso.');
+        if (finishOrderBtn) {
+          finishOrderBtn.disabled = false;
+          finishOrderBtn.textContent = originalFinishText;
+        }
+        return;
+      }
+
       if (isCardPayment) {
         if (!stripeInstance || !stripeElements || !stripePaymentElement || !state.stripe.clientSecret) {
           throw new Error('Pagamento com cartão ainda não inicializado.');
@@ -1863,6 +1933,8 @@ function setupAuthUi() {
         }
 
         setPaymentFeedback('Pagamento confirmado com sucesso.', 'success');
+      } else if (selectedPayment === 'boleto') {
+        setPaymentFeedback('Pedido criado. Boleto disponível para emissão no fluxo administrativo.', 'success');
       }
     } catch (error) {
       if (finishOrderBtn) {
