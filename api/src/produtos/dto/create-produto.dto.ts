@@ -1,14 +1,66 @@
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsNumber,
-  Matches,
   IsOptional,
   IsString,
-  Max,
+  Matches,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class CreateImagemProdutoDto {
+  @IsString()
+  url_imagem: string;
+
+  @IsOptional()
+  @IsInt()
+  id_produto_cor?: number;
+
+  @IsOptional()
+  @IsString()
+  alt_text?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  principal?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  ordem?: number;
+}
+
+class CreateVariacaoProdutoDto {
+  @IsOptional()
+  @IsInt()
+  id_produto_cor?: number;
+
+  @IsOptional()
+  @IsInt()
+  id_produto_tamanho?: number;
+
+  @IsOptional()
+  @IsString()
+  sku?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  preco?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  estoque: number;
+
+  @IsOptional()
+  @IsString()
+  numeracao?: string;
+}
 
 export class CreateProdutoDto {
   @IsInt()
@@ -22,26 +74,10 @@ export class CreateProdutoDto {
   @IsString()
   descricao?: string;
 
+  @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   preco: number;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  preco_promocional?: number;
-
-  @IsInt()
-  @Min(0)
-  estoque: number;
-
-  @IsOptional()
-  @IsString()
-  imagem?: string;
-
-  @IsOptional()
-  @IsString()
-  galeria_imagens?: string;
 
   @IsOptional()
   @IsString()
@@ -50,75 +86,60 @@ export class CreateProdutoDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  numeracao?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
+  @MaxLength(100)
   marca?: string;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Max(95)
-  desconto?: number;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Max(40)
-  cashback?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  modalidade?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  lancamento?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  promocao_ativa?: boolean;
-
-  @IsOptional()
-  @IsInt()
-  id_vendedor?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  ativo?: boolean;
-
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 3 })
-  @Min(0.001)
-  peso_kg?: number;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  altura_cm?: number;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  largura_cm?: number;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  comprimento_cm?: number;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^\d{5}-?\d{3}$/)
-  origem_cep?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(180)
   slug?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  ativo?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  destaque?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateImagemProdutoDto)
+  imagens?: CreateImagemProdutoDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateVariacaoProdutoDto)
+  variacoes?: CreateVariacaoProdutoDto[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cores?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tamanhos?: string[];
+
+  @IsOptional()
+  @IsString()
+  imagem?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  estoque?: number;
+
+  @IsOptional()
+  @IsString()
+  numeracao?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5}-?\d{3}$/)
+  origem_cep?: string;
 }

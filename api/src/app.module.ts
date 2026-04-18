@@ -1,5 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProdutosModule } from './produtos/produtos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
@@ -10,33 +10,26 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 import { FreteModule } from './frete/frete.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { PaymentsModule } from './payments/payments.module';
-import { StorageModule } from './storage/storage.module';
-
-const isDatabaseEnabled = process.env.ENABLE_DATABASE === 'true';
-const databaseUrl = process.env.DATABASE_URL;
-
-const databaseImports =
-  isDatabaseEnabled && databaseUrl
-    ? [
-        // TODO(db): para reativar PostgreSQL em produção, mantenha ENABLE_DATABASE=true
-        // e configure DATABASE_URL. Os módulos TypeORM podem voltar a ser importados no AppModule.
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: databaseUrl,
-          autoLoadEntities: true,
-          synchronize: false,
-        }),
-      ]
-    : [];
+import { CarrinhoModule } from './carrinho/carrinho.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    ...databaseImports,
-    // Fallback atual sem banco: dados em memória para manter a API funcionando.
-    StorageModule,
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres' as const,
+        host: configService.get<string>('DB_HOST'),
+        port: Number(configService.get<string>('DB_PORT', '5432')),
+        username: configService.get<string>('DB_USERNAME'),
+        password: configService.get<string>('DB_PASSWORD'),
+        database: configService.get<string>('DB_DATABASE'),
+        autoLoadEntities: true,
+        synchronize: false,
+      }),
+    }),
     ProdutosModule,
     UsuariosModule,
     PedidosModule,
@@ -44,6 +37,7 @@ const databaseImports =
     FreteModule,
     GiftCardsModule,
     PaymentsModule,
+    CarrinhoModule,
   ],
 })
 export class AppModule implements NestModule {

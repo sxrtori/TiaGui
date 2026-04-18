@@ -1,7 +1,10 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CalcularFreteDto } from '../dto/calcular-frete.dto';
-import { CotacaoFreteResultado, FreteProvider } from './frete-provider.interface';
+import {
+  CotacaoFreteResultado,
+  FreteProvider,
+} from './frete-provider.interface';
 
 type FrenetQuoteResponse = {
   ShippingSevicesArray?: Array<{
@@ -23,14 +26,22 @@ export class FrenetProvider implements FreteProvider {
   private readonly timeoutMs: number;
 
   constructor(private readonly configService: ConfigService) {
-    this.quoteUrl = this.configService.get<string>('FRENET_QUOTE_URL') || 'https://api.frenet.com.br/shipping/quote';
+    this.quoteUrl =
+      this.configService.get<string>('FRENET_QUOTE_URL') ||
+      'https://api.frenet.com.br/shipping/quote';
     this.token = this.configService.get<string>('FRENET_TOKEN') || '';
-    this.timeoutMs = Number(this.configService.get<string>('FRENET_TIMEOUT_MS') || 12000);
+    this.timeoutMs = Number(
+      this.configService.get<string>('FRENET_TIMEOUT_MS') || 12000,
+    );
   }
 
-  async calcular(payload: CalcularFreteDto & { cepOrigem: string }): Promise<CotacaoFreteResultado> {
+  async calcular(
+    payload: CalcularFreteDto & { cepOrigem: string },
+  ): Promise<CotacaoFreteResultado> {
     if (!this.token) {
-      throw new ServiceUnavailableException('Integração de frete indisponível: FRENET_TOKEN não configurado');
+      throw new ServiceUnavailableException(
+        'Integração de frete indisponível: FRENET_TOKEN não configurado',
+      );
     }
 
     const body = {
@@ -63,14 +74,23 @@ export class FrenetProvider implements FreteProvider {
       });
 
       if (!response.ok) {
-        throw new ServiceUnavailableException('Falha ao consultar cotação de frete no provedor');
+        throw new ServiceUnavailableException(
+          'Falha ao consultar cotação de frete no provedor',
+        );
       }
 
       const data = (await response.json()) as FrenetQuoteResponse;
       const validOptions = (data.ShippingSevicesArray || [])
-        .filter((service) => !service.Error && Number(service.ShippingPrice) >= 0)
+        .filter(
+          (service) => !service.Error && Number(service.ShippingPrice) >= 0,
+        )
         .map((service) => ({
-          id: String(service.ServiceCode || service.CarrierCode || service.ServiceDescription || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+          id: String(
+            service.ServiceCode ||
+              service.CarrierCode ||
+              service.ServiceDescription ||
+              `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          ),
           nome: String(service.ServiceDescription || 'Serviço de entrega'),
           transportadora: String(service.Carrier || 'Transportadora'),
           codigoServico: service.ServiceCode,
@@ -88,7 +108,9 @@ export class FrenetProvider implements FreteProvider {
       };
     } catch (error) {
       if (error instanceof ServiceUnavailableException) throw error;
-      throw new ServiceUnavailableException('Serviço de frete indisponível no momento');
+      throw new ServiceUnavailableException(
+        'Serviço de frete indisponível no momento',
+      );
     } finally {
       clearTimeout(timer);
     }

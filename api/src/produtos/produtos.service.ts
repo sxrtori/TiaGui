@@ -1,116 +1,337 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Produto } from './entities/produto.entity';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
-import { InMemoryDataService } from '../storage/in-memory-data.service';
-
-const CATEGORIA_ALIAS: Record<string, number> = {
-  masculino: 1,
-  feminino: 2,
-  calçados: 3,
-  calcados: 3,
-  acessórios: 4,
-  acessorios: 4,
-  esportes: 5,
-};
+import { ProdutoCor } from './entities/produto-cor.entity';
+import { ProdutoImagem } from './entities/produto-imagem.entity';
+import { ProdutoTamanho } from './entities/produto-tamanho.entity';
+import { ProdutoVariacao } from './entities/produto-variacao.entity';
+import { Produto } from './entities/produto.entity';
 
 @Injectable()
 export class ProdutosService {
-  constructor(private readonly data: InMemoryDataService) {}
+  constructor(
+    @InjectRepository(Produto)
+    private readonly produtoRepository: Repository<Produto>,
+    @InjectRepository(ProdutoImagem)
+    private readonly imagemRepository: Repository<ProdutoImagem>,
+    @InjectRepository(ProdutoVariacao)
+    private readonly variacaoRepository: Repository<ProdutoVariacao>,
+    @InjectRepository(ProdutoCor)
+    private readonly corRepository: Repository<ProdutoCor>,
+    @InjectRepository(ProdutoTamanho)
+    private readonly tamanhoRepository: Repository<ProdutoTamanho>,
+  ) {}
 
   async findAll(filters?: {
     q?: string;
     id_categoria?: number;
     promocao?: string;
     vendedorId?: number;
-  }): Promise<Produto[]> {
-    let products = [...this.data.products];
+  }): Promise<Record<string, unknown>[]> {
+    const qb = this.produtoRepository
+      .createQueryBuilder('produto')
+      .leftJoinAndSelect('produto.categoria', 'categoria')
+      .leftJoinAndSelect('produto.imagens', 'imagens')
+      .leftJoinAndSelect('produto.cores', 'cores')
+      .leftJoinAndSelect('produto.tamanhos', 'tamanhos')
+      .leftJoinAndSelect('produto.variacoes', 'variacoes')
+      .leftJoinAndSelect('variacoes.cor', 'variacaoCor')
+      .leftJoinAndSelect('variacoes.tamanho', 'variacaoTamanho');
 
-    if (filters?.id_categoria) products = products.filter((item) => item.id_categoria === filters.id_categoria);
-    if (filters?.promocao === 'true') products = products.filter((item) => Boolean(item.promocao_ativa));
-    if (filters?.vendedorId) products = products.filter((item) => item.id_vendedor === filters.vendedorId);
-
-    if (filters?.q?.trim()) {
-      const term = filters.q.trim().toLowerCase();
-      const categoriaByText = CATEGORIA_ALIAS[term];
-      products = products.filter((item) => {
-        const searchable = [item.nome, item.descricao, item.marca, item.modalidade]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return searchable.includes(term) || (categoriaByText ? item.id_categoria === categoriaByText : false);
+    if (filters?.id_categoria)
+      qb.andWhere('produto.id_categoria = :idCategoria', {
+        idCategoria: filters.id_categoria,
       });
+    if (filters?.q?.trim()) {
+      const term = `%${filters.q.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(produto.nome) LIKE :term OR LOWER(produto.descricao) LIKE :term OR LOWER(produto.marca) LIKE :term OR LOWER(categoria.nome) LIKE :term)',
+        { term },
+      );
     }
 
-    return products.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    qb.orderBy('produto.created_at', 'DESC');
+
+    const produtos = await qb.getMany();
+    return produtos
+      .filter((produto) =>
+        filters?.promocao === 'true' ? Boolean(produto.destaque) : true,
+      )
+      .map((produto) => this.toFrontProduct(produto));
   }
 
-  async findOne(id: number): Promise<Produto> {
-    const produto = this.data.products.find((item) => item.id_produto === id);
+  async findOne(id: number): Promise<Record<string, unknown>> {
+    const produto = await this.produtoRepository.findOne({
+      where: { id_produto: id },
+      relations: {
+        categoria: true,
+        imagens: true,
+        variacoes: { cor: true, tamanho: true },
+        cores: true,
+        tamanhos: true,
+      },
+    });
+
     if (!produto) throw new NotFoundException('Produto não encontrado');
-    return produto;
+    return this.toFrontProduct(produto);
   }
 
-  async findBySlug(slug: string): Promise<Produto> {
-    const produto = this.data.products.find((item) => item.slug === slug);
+  async findBySlug(slug: string): Promise<Record<string, unknown>> {
+    const produto = await this.produtoRepository.findOne({
+      where: { slug },
+      relations: {
+        categoria: true,
+        imagens: true,
+        variacoes: { cor: true, tamanho: true },
+        cores: true,
+        tamanhos: true,
+      },
+    });
+
     if (!produto) throw new NotFoundException('Produto não encontrado');
-    return produto;
+    return this.toFrontProduct(produto);
   }
 
-  async create(createProdutoDto: CreateProdutoDto): Promise<Produto> {
-    if (createProdutoDto.id_vendedor) await this.assertSellerCanSell(createProdutoDto.id_vendedor);
+  async create(
+    createProdutoDto: CreateProdutoDto,
+  ): Promise<Record<string, unknown>> {
+    const produto = await this.produtoRepository.save(
+      this.produtoRepository.create({
+        id_categoria: createProdutoDto.id_categoria,
+        nome: createProdutoDto.nome,
+        descricao: createProdutoDto.descricao,
+        preco: createProdutoDto.preco,
+        genero: createProdutoDto.genero,
+        marca: createProdutoDto.marca,
+        slug: createProdutoDto.slug || this.slugify(createProdutoDto.nome),
+        ativo: createProdutoDto.ativo ?? true,
+        destaque: createProdutoDto.destaque ?? false,
+      }),
+    );
 
-    const produto: Produto = {
-      ...createProdutoDto,
-      id_produto: this.data.nextId('product'),
-      slug: createProdutoDto.slug || this.slugify(createProdutoDto.nome),
-      desconto: Number(createProdutoDto.desconto || 0),
-      cashback: Number(createProdutoDto.cashback || 0),
-      ativo: createProdutoDto.ativo ?? true,
-      lancamento: Boolean(createProdutoDto.lancamento),
-      promocao_ativa: Boolean(createProdutoDto.promocao_ativa),
-      origem_cep: createProdutoDto.origem_cep || '01001-000',
-      media_avaliacao: 0,
-      total_avaliacoes: 0,
-      peso_kg: Number(createProdutoDto.peso_kg || 0.3),
-      altura_cm: Number(createProdutoDto.altura_cm || 5),
-      largura_cm: Number(createProdutoDto.largura_cm || 20),
-      comprimento_cm: Number(createProdutoDto.comprimento_cm || 30),
-      created_at: new Date(),
-    } as Produto;
-
-    this.data.products.unshift(produto);
-    return produto;
+    await this.syncProdutoRelations(produto.id_produto, createProdutoDto);
+    return this.findOne(produto.id_produto);
   }
 
-  async update(id: number, updateProdutoDto: UpdateProdutoDto): Promise<Produto> {
-    const produto = await this.findOne(id);
-    const sellerId = updateProdutoDto.id_vendedor || produto.id_vendedor;
-    if (sellerId) await this.assertSellerCanSell(sellerId);
+  async update(
+    id: number,
+    updateProdutoDto: UpdateProdutoDto,
+  ): Promise<Record<string, unknown>> {
+    const produto = await this.produtoRepository.findOne({
+      where: { id_produto: id },
+    });
+    if (!produto) throw new NotFoundException('Produto não encontrado');
 
     Object.assign(produto, {
       ...updateProdutoDto,
-      slug: updateProdutoDto.slug || (updateProdutoDto.nome ? this.slugify(updateProdutoDto.nome) : produto.slug),
+      slug:
+        updateProdutoDto.slug ||
+        (updateProdutoDto.nome
+          ? this.slugify(updateProdutoDto.nome)
+          : produto.slug),
     });
 
-    return produto;
+    await this.produtoRepository.save(produto);
+    await this.syncProdutoRelations(id, updateProdutoDto);
+
+    return this.findOne(id);
   }
 
-  async updatePromotion(id: number, promocao_ativa: boolean, desconto?: number) {
-    const payload: UpdateProdutoDto = { promocao_ativa };
-    if (typeof desconto === 'number') payload.desconto = desconto;
-    return this.update(id, payload);
+  async updatePromotion(
+    id: number,
+    promocao_ativa: boolean,
+    desconto?: number,
+  ) {
+    void desconto;
+    return this.update(id, { destaque: promocao_ativa });
   }
 
   async updateStock(id: number, estoque: number) {
-    return this.update(id, { estoque });
+    const variacao = await this.variacaoRepository.findOne({
+      where: { id_produto: id },
+      order: { id_produto_variacao: 'ASC' },
+    });
+
+    if (!variacao) {
+      throw new NotFoundException(
+        'Variação não encontrada para atualizar estoque',
+      );
+    }
+
+    variacao.estoque = estoque;
+    await this.variacaoRepository.save(variacao);
+    return this.findOne(id);
   }
 
   async remove(id: number): Promise<{ message: string }> {
-    const index = this.data.products.findIndex((item) => item.id_produto === id);
-    if (index < 0) throw new NotFoundException('Produto não encontrado');
-    this.data.products.splice(index, 1);
+    const produto = await this.produtoRepository.findOne({
+      where: { id_produto: id },
+    });
+    if (!produto) throw new NotFoundException('Produto não encontrado');
+    await this.produtoRepository.remove(produto);
     return { message: 'Produto removido com sucesso' };
+  }
+
+  private async syncProdutoRelations(
+    idProduto: number,
+    dto: Partial<CreateProdutoDto>,
+  ): Promise<void> {
+    if (dto.cores?.length) {
+      await this.corRepository.delete({ id_produto: idProduto });
+      await this.corRepository.save(
+        dto.cores.map((nomeCor, ordem) =>
+          this.corRepository.create({
+            id_produto: idProduto,
+            nome_cor: nomeCor,
+            ordem,
+            ativa: true,
+          }),
+        ),
+      );
+    }
+
+    if (dto.tamanhos?.length) {
+      await this.tamanhoRepository.delete({ id_produto: idProduto });
+      await this.tamanhoRepository.save(
+        dto.tamanhos.map((tamanho, ordem) =>
+          this.tamanhoRepository.create({
+            id_produto: idProduto,
+            tamanho,
+            ordem,
+            ativo: true,
+          }),
+        ),
+      );
+    }
+
+    if (dto.imagens?.length || dto.imagem) {
+      await this.imagemRepository.delete({ id_produto: idProduto });
+      const imagens = dto.imagens?.length
+        ? dto.imagens
+        : [{ url_imagem: String(dto.imagem), principal: true, ordem: 0 }];
+      await this.imagemRepository.save(
+        imagens.map((imagem, idx) =>
+          this.imagemRepository.create({
+            id_produto: idProduto,
+            id_produto_cor: imagem.id_produto_cor,
+            url_imagem: imagem.url_imagem,
+            alt_text: imagem.alt_text,
+            principal: imagem.principal ?? idx === 0,
+            ordem: imagem.ordem ?? idx,
+          }),
+        ),
+      );
+    }
+
+    if (dto.variacoes?.length) {
+      await this.variacaoRepository.delete({ id_produto: idProduto });
+      await this.variacaoRepository.save(
+        dto.variacoes.map((variacao) =>
+          this.variacaoRepository.create({
+            id_produto: idProduto,
+            id_produto_cor: variacao.id_produto_cor,
+            id_produto_tamanho: variacao.id_produto_tamanho,
+            sku: variacao.sku,
+            preco: variacao.preco,
+            estoque: variacao.estoque,
+            numeracao: variacao.numeracao,
+            ativa: true,
+          }),
+        ),
+      );
+      return;
+    }
+
+    if (typeof dto.estoque === 'number') {
+      const primeira = await this.variacaoRepository.findOne({
+        where: { id_produto: idProduto },
+      });
+      if (primeira) {
+        primeira.estoque = dto.estoque;
+        await this.variacaoRepository.save(primeira);
+      } else {
+        await this.variacaoRepository.save(
+          this.variacaoRepository.create({
+            id_produto: idProduto,
+            estoque: dto.estoque,
+            numeracao: dto.numeracao,
+            ativa: true,
+          }),
+        );
+      }
+    }
+  }
+
+  private toFrontProduct(produto: Produto): Record<string, unknown> {
+    const imagens = [...(produto.imagens || [])].sort(
+      (a, b) => a.ordem - b.ordem,
+    );
+    const variacoes = [...(produto.variacoes || [])].sort(
+      (a, b) => a.id_produto_variacao - b.id_produto_variacao,
+    );
+    const estoqueTotal = variacoes.reduce(
+      (total, variacao) => total + Number(variacao.estoque || 0),
+      0,
+    );
+
+    const primeiroPrecoVariacao = variacoes.find(
+      (variacao) => variacao.preco != null,
+    )?.preco;
+    const preco = Number(produto.preco);
+
+    return {
+      ...produto,
+      id: produto.id_produto,
+      categoria: produto.categoria?.nome,
+      preco,
+      preco_promocional: primeiroPrecoVariacao
+        ? Number(primeiroPrecoVariacao)
+        : undefined,
+      imagem:
+        imagens.find((imagem) => imagem.principal)?.url_imagem ||
+        imagens[0]?.url_imagem ||
+        '',
+      imagens,
+      estoque: estoqueTotal,
+      promocao_ativa: produto.destaque,
+      desconto:
+        produto.destaque && primeiroPrecoVariacao
+          ? Math.max(
+              0,
+              Number(
+                (
+                  ((preco - Number(primeiroPrecoVariacao)) / preco) *
+                  100
+                ).toFixed(2),
+              ),
+            )
+          : 0,
+      cores: (produto.cores || []).map((cor) => ({
+        id_produto_cor: cor.id_produto_cor,
+        nome_cor: cor.nome_cor,
+        codigo_hex: cor.codigo_hex,
+      })),
+      tamanhos: (produto.tamanhos || []).map((tamanho) => ({
+        id_produto_tamanho: tamanho.id_produto_tamanho,
+        tamanho: tamanho.tamanho,
+      })),
+      variacoes: variacoes.map((variacao) => ({
+        id_produto_variacao: variacao.id_produto_variacao,
+        id_produto_cor: variacao.id_produto_cor,
+        id_produto_tamanho: variacao.id_produto_tamanho,
+        cor: variacao.cor?.nome_cor,
+        tamanho: variacao.tamanho?.tamanho,
+        preco: variacao.preco ? Number(variacao.preco) : null,
+        estoque: variacao.estoque,
+        numeracao: variacao.numeracao,
+      })),
+      numeracao: variacoes
+        .map((variacao) => variacao.numeracao)
+        .filter(Boolean)
+        .join(','),
+    };
   }
 
   private slugify(value: string): string {
@@ -121,17 +342,5 @@ export class ProdutosService {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '')
       .slice(0, 180);
-  }
-
-  private async assertSellerCanSell(id_vendedor: number): Promise<void> {
-    const seller = this.data.users.find((user) => user.id_usuario === id_vendedor);
-    if (!seller || seller.tipo_usuario !== 'vendedor') {
-      throw new ForbiddenException('Somente contas de vendedor podem anunciar');
-    }
-    if (seller.vendedor_bloqueado) {
-      throw new ForbiddenException(
-        seller.motivo_bloqueio || 'Vendedor bloqueado: 15+ avaliações com média inferior a 3.5',
-      );
-    }
   }
 }

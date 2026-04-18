@@ -50,6 +50,12 @@ class PedidoItemDto {
   @Min(1)
   id_produto: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id_produto_variacao?: number;
+
   @IsString()
   @MaxLength(180)
   nome: string;

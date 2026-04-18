@@ -4,15 +4,9 @@ import { raw, Request } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const dbEnabled = process.env.ENABLE_DATABASE === 'true';
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log'],
   });
-
-  if (!dbEnabled) {
-    // TODO(db): definir ENABLE_DATABASE=true + DATABASE_URL para reativar PostgreSQL.
-    console.log('[bootstrap] PostgreSQL desativado: API iniciada com armazenamento em memória.');
-  }
 
   app.use(
     '/payments/stripe/webhook',
@@ -32,16 +26,23 @@ async function bootstrap() {
     .filter(Boolean);
 
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
       if (!origin) return callback(null, true);
       const normalizedOrigin = origin.replace(/\/$/, '');
       if (configuredOrigins.includes('*')) return callback(null, true);
-      if (configuredOrigins.includes(normalizedOrigin)) return callback(null, true);
+      if (configuredOrigins.includes(normalizedOrigin))
+        return callback(null, true);
 
-      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizedOrigin);
-      const isPrivateNetworkIp = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)(\d+\.\d+)(:\d+)?$/i.test(
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
         normalizedOrigin,
       );
+      const isPrivateNetworkIp =
+        /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)(\d+\.\d+)(:\d+)?$/i.test(
+          normalizedOrigin,
+        );
 
       if (isLocalhost || isPrivateNetworkIp) return callback(null, true);
 
@@ -64,4 +65,4 @@ async function bootstrap() {
   await app.listen(port);
 }
 
-bootstrap();
+void bootstrap();

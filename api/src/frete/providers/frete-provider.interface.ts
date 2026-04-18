@@ -19,5 +19,7 @@ export type CotacaoFreteResultado = {
 };
 
 export interface FreteProvider {
-  calcular(payload: CalcularFreteDto & { cepOrigem: string }): Promise<CotacaoFreteResultado>;
+  calcular(
+    payload: CalcularFreteDto & { cepOrigem: string },
+  ): Promise<CotacaoFreteResultado>;
 }

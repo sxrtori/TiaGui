@@ -27,12 +27,18 @@ export class PedidosController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: TokenPayload) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: TokenPayload,
+  ) {
     return this.pedidosService.findOneForUser(id, user);
   }
 
   @Post()
-  create(@Body() createPedidoDto: CreatePedidoDto, @CurrentUser() user: TokenPayload) {
+  create(
+    @Body() createPedidoDto: CreatePedidoDto,
+    @CurrentUser() user: TokenPayload,
+  ) {
     return this.pedidosService.create({
       ...createPedidoDto,
       id_usuario: user.sub,

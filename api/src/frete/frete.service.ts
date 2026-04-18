@@ -48,7 +48,12 @@ export class FreteService {
       valorUnitario: Number(item.valorUnitario ?? item.preco ?? 0),
     }));
 
-    if (itensNormalizados.some((item) => !Number.isFinite(item.valorUnitario) || item.valorUnitario < 0)) {
+    if (
+      itensNormalizados.some(
+        (item) =>
+          !Number.isFinite(item.valorUnitario) || item.valorUnitario < 0,
+      )
+    ) {
       throw new BadRequestException('Item de frete com valor inválido.');
     }
 
