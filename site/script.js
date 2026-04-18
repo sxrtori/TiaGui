@@ -1,4 +1,12 @@
-const API_BASE_URL = window.SPORTX_API_URL || 'http://localhost:3000';
+const resolveApiBaseUrl = () => {
+  const explicit = window.SPORTX_API_URL || document.querySelector('meta[name="sportx-api-url"]')?.content || localStorage.getItem('sportx-api-base-url');
+  if (explicit) return explicit.replace(/\/$/, '');
+  const { protocol, hostname } = window.location;
+  const port = window.location.port === '5500' ? '3000' : (window.location.port || '3000');
+  return `${protocol}//${hostname}:${port}`;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const STORAGE_KEYS = {
   cart: 'sportx-cart',
@@ -11,7 +19,8 @@ const STORAGE_KEYS = {
   localSellerReviews: 'sportx-local-seller-reviews',
   orders: 'sportx-local-orders',
   productsUpdated: 'sportx-products-updated',
-  giftCards: 'sportx-local-gift-cards'
+  giftCards: 'sportx-local-gift-cards',
+  checkout: 'sportx-checkout-state'
 };
 
 const CATEGORY_MAP = { Masculino: 1, Feminino: 2, 'Calçados': 3, Acessórios: 4, Esportes: 5 };
@@ -72,6 +81,25 @@ const FREE_SHIPPING_THRESHOLD = 400;
 const currency = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const discountedPrice = (p) => Number((p.preco * (1 - Number(p.desconto || 0) / 100)).toFixed(2));
 const getQuery = (k) => new URLSearchParams(window.location.search).get(k);
+
+
+function normalizeUser(user = {}) {
+  const tipoUsuario = user.tipo_usuario || user.type || user.tipo || 'cliente';
+  return {
+    id_usuario: Number(user.id_usuario || user.id || 0),
+    nome: user.nome || user.name || '',
+    email: user.email || '',
+    tipo_usuario: tipoUsuario,
+    type: tipoUsuario,
+    cpf: user.cpf || '',
+    data_nascimento: user.data_nascimento || user.birthDate || '',
+    vendedor_bloqueado: Boolean(user.vendedor_bloqueado),
+    cpf_bloqueado_venda: Boolean(user.cpf_bloqueado_venda),
+    media_avaliacao_vendedor: Number(user.media_avaliacao_vendedor || 0),
+    total_avaliacoes_vendedor: Number(user.total_avaliacoes_vendedor || 0),
+    motivo_bloqueio: user.motivo_bloqueio || '',
+  };
+}
 
 function showToast(message) {
   const t = document.getElementById('toast');
@@ -680,7 +708,7 @@ function getSellerProducts() {
 }
 
 function getSellerAccountStatus() {
-  if (!state.currentUser || state.currentUser.type !== 'vendedor') return { blocked: false, average: 0, total: 0, reason: '' };
+  if (!state.currentUser || state.currentUser.tipo_usuario !== 'vendedor') return { blocked: false, average: 0, total: 0, reason: '' };
   const average = Number(state.currentUser.media_avaliacao_vendedor || 0);
   const total = Number(state.currentUser.total_avaliacoes_vendedor || 0);
   const blocked = Boolean(state.currentUser.vendedor_bloqueado) || (total >= 15 && average < 3.5);
@@ -751,7 +779,7 @@ function fillEditForm() {
 
 async function submitSellerProduct(event) {
   event.preventDefault();
-  if (!state.currentUser || state.currentUser.type !== 'vendedor') return showToast('Faça login como vendedor.');
+  if (!state.currentUser || state.currentUser.tipo_usuario !== 'vendedor') return showToast('Faça login como vendedor.');
   const sellerStatus = getSellerAccountStatus();
   if (sellerStatus.blocked) return showToast(sellerStatus.reason || 'Conta de vendedor bloqueada para anunciar.');
   const isEdit = document.body.dataset.page === 'edit-product';
@@ -844,8 +872,8 @@ function updateHeaderUserUI() {
 
   if (!openAuthBtn) return;
   if (state.currentUser) {
-    const name = state.currentUser.name || state.currentUser.nome || state.currentUser.email || 'Minha conta';
-    const userType = state.currentUser.type || state.currentUser.tipo_usuario || 'comprador';
+    const name = state.currentUser.nome || state.currentUser.email || 'Minha conta';
+    const userType = state.currentUser.tipo_usuario || 'cliente';
     const isSeller = userType === 'vendedor';
     const avatar = String(name).trim().charAt(0).toUpperCase() || 'U';
     accountLabel && (accountLabel.textContent = name);
@@ -884,6 +912,12 @@ function updateWishlistBadge() {
 function saveSessionState() {
   localStorage.setItem(STORAGE_KEYS.cart, JSON.stringify(state.cart));
   localStorage.setItem(STORAGE_KEYS.wishlist, JSON.stringify(state.wishlist));
+  localStorage.setItem(STORAGE_KEYS.checkout, JSON.stringify({
+    shippingOptionId: state.shippingOption?.id || '',
+    shippingOptions: state.shippingOptions || [],
+    shippingOrigin: state.shippingOrigin || null,
+    shippingZipCode: state.shippingZipCode || '',
+  }));
 }
 
 function getCartEntries() {
@@ -981,6 +1015,7 @@ async function refreshCheckoutShippingOptions() {
 
     refreshShippingSelectionUi();
     updateCartTotals();
+    saveSessionState();
     return;
   } catch (error) {
     if (requestId !== checkoutShippingRequestId) return;
@@ -988,6 +1023,7 @@ async function refreshCheckoutShippingOptions() {
     state.shippingOptions = [];
     list.innerHTML = `<small>${normalizeUiErrorMessage(error, 'Não foi possível buscar o frete para este CEP.')}</small>`;
     updateCartTotals();
+    saveSessionState();
   }
 }
 
@@ -1090,10 +1126,12 @@ async function ensureAuth(onSuccess, message = 'Faça login para continuar') {
 }
 
 function persistUserSession(user, token = '') {
-  state.currentUser = { ...user, type: user?.type || user?.tipo_usuario || user?.tipo || 'comprador' };
-  state.authToken = token || state.authToken || '';
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+  const normalized = normalizeUser(user);
+  state.currentUser = normalized;
+  state.authToken = token || '';
+  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalized));
   if (state.authToken) localStorage.setItem(STORAGE_KEYS.token, state.authToken);
+  else localStorage.removeItem(STORAGE_KEYS.token);
   updateHeaderUserUI();
 }
 
@@ -1132,47 +1170,15 @@ async function handleAuthSubmit(event) {
 
   try {
     if (state.authMode === 'login') {
-      let userData = null;
-      let token = '';
-      try {
-        const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, senha: password }) });
-        token = result.token || '';
-        userData = { ...result.user, email: result.user?.email || email, name: result.user?.name || result.user?.nome || email, type: result.user?.type || result.user?.tipo_usuario || result.user?.tipo || 'comprador' };
-      } catch (_e) {
-        const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
-        const local = users.find((u) => u.email === email && u.password === password);
-        if (!local) throw new Error('Credenciais inválidas.');
-        if (local.type === 'vendedor') {
-          if (!isValidCpf(local.cpf || '')) throw new Error('Conta de vendedor inválida: CPF obrigatório.');
-          if (getAgeFromBirthDate(local.birthDate) < 18) throw new Error('Conta de vendedor inválida: idade mínima 18 anos.');
-          if (local.vendedorBloqueado) throw new Error(local.motivoBloqueio || 'Conta de vendedor bloqueada.');
-        }
-        userData = { id_usuario: local.id_usuario, email: local.email, name: local.name, type: local.type };
-      }
-      persistUserSession(userData, token);
+      const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, senha: password }) });
+      const token = result.token || result.access_token || '';
+      if (!token || !result?.user) throw new Error('Sessão inválida recebida do servidor.');
+      persistUserSession(result.user, token);
       setAuthFeedback('Login realizado com sucesso.', 'success');
       showToast('Bem-vindo de volta!');
     } else {
-      let created = false;
-      try {
-        await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ nome: name, email, senha: password, tipo_usuario: type === 'comprador' ? 'cliente' : type, cpf: type === 'vendedor' ? cpf : undefined, data_nascimento: type === 'vendedor' ? birthDate : undefined }) });
-        created = true;
-      } catch (_e) {
-        const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
-        if (users.some((u) => u.email === email)) throw new Error('E-mail já cadastrado.');
-        if (type === 'vendedor') {
-          const normalizedCpf = sanitizeCpf(cpf);
-          if (users.some((u) => sanitizeCpf(u.cpf || '') === normalizedCpf)) {
-            throw new Error('CPF já cadastrado para outro vendedor.');
-          }
-          if (users.some((u) => sanitizeCpf(u.cpf || '') === normalizedCpf && u.cpfBloqueadoVenda)) {
-            throw new Error('CPF bloqueado para venda na plataforma.');
-          }
-        }
-        users.push({ id_usuario: Date.now(), name, email, password, type, cpf: type === 'vendedor' ? cpf : '', birthDate: type === 'vendedor' ? birthDate : '', cpfBloqueadoVenda: false });
-        localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-      }
-      setAuthFeedback(created ? 'Conta criada via API. Faça login.' : 'Conta criada localmente. Faça login.', 'success');
+      await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ nome: name, email, senha: password, tipo_usuario: type === 'comprador' ? 'cliente' : type, cpf: type === 'vendedor' ? cpf : undefined, data_nascimento: type === 'vendedor' ? birthDate : undefined }) });
+      setAuthFeedback('Conta criada com sucesso. Faça login.', 'success');
       setAuthMode('login');
       document.getElementById('authEmail') && (document.getElementById('authEmail').value = email);
       document.getElementById('authPassword') && (document.getElementById('authPassword').value = '');
@@ -1241,7 +1247,7 @@ function toggleCheckout(open = true) {
   modal.classList.toggle('open', open);
   if (open) {
     if (state.currentUser) {
-      document.getElementById('checkoutName') && (document.getElementById('checkoutName').value = state.currentUser.name || state.currentUser.nome || '');
+      document.getElementById('checkoutName') && (document.getElementById('checkoutName').value = state.currentUser.nome || '');
       document.getElementById('checkoutEmail') && (document.getElementById('checkoutEmail').value = state.currentUser.email || '');
     }
     updateCartTotals();
@@ -1435,11 +1441,18 @@ function loadSession() {
   state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '[]').map((i) => ({ id: Number(i.id), qty: Number(i.qty || 1), selectedSize: i.selectedSize || '', selectedColor: i.selectedColor || '', selectedColorHex: i.selectedColorHex || '' }));
   state.wishlist = JSON.parse(localStorage.getItem(STORAGE_KEYS.wishlist) || '[]').map(Number);
   const storedUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.user) || 'null');
-  state.currentUser = storedUser ? { ...storedUser, type: storedUser.type || storedUser.tipo_usuario || storedUser.tipo || 'comprador' } : null;
+  state.currentUser = storedUser ? normalizeUser(storedUser) : null;
   state.authToken = localStorage.getItem(STORAGE_KEYS.token) || '';
   state.localReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localReviews) || '{}');
   state.localSellerReviews = JSON.parse(localStorage.getItem(STORAGE_KEYS.localSellerReviews) || '{}');
   state.giftCards = JSON.parse(localStorage.getItem(STORAGE_KEYS.giftCards) || '[]');
+  const checkoutState = JSON.parse(localStorage.getItem(STORAGE_KEYS.checkout) || 'null');
+  if (checkoutState) {
+    state.shippingOptions = Array.isArray(checkoutState.shippingOptions) ? checkoutState.shippingOptions : [];
+    state.shippingOption = state.shippingOptions.find((option) => option.id === checkoutState.shippingOptionId) || null;
+    state.shippingOrigin = checkoutState.shippingOrigin || null;
+    state.shippingZipCode = sanitizeCep(checkoutState.shippingZipCode || '');
+  }
 
   const giftStatus = new URLSearchParams(window.location.search).get('gift');
   if (giftStatus === 'success') {
@@ -1528,6 +1541,7 @@ function setupAuthUi() {
     state.shippingOption = state.shippingOptions.find((option) => option.id === optionId) || null;
     refreshShippingSelectionUi();
     updateCartTotals();
+    saveSessionState();
   });
   const installmentsGroup = document.getElementById('installmentsGroup');
   const installmentsSelect = document.getElementById('installmentsSelect');
@@ -1542,7 +1556,7 @@ function setupAuthUi() {
   paymentMethod?.addEventListener('change', syncPaymentInstallments);
   syncPaymentInstallments();
   document.getElementById('finishOrderBtn')?.addEventListener('click', async () => {
-    if (!state.currentUser) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
+    if (!state.currentUser || !state.authToken) return ensureAuth(() => toggleCheckout(true), 'Faça login para finalizar a compra');
     if (!state.cart.length) return showToast('Seu carrinho está vazio.');
     const { entries, subtotal, cashback, shipping, total } = computeCartPricing();
     if (subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD && !state.shippingOption) {
@@ -1556,9 +1570,8 @@ function setupAuthUi() {
     const paymentMap = { credito: 'cartao', pix: 'pix', boleto: 'boleto' };
     const selectedPayment = document.getElementById('paymentMethod')?.value || 'credito';
     const payload = {
-      id_usuario: Number(state.currentUser?.id_usuario || state.currentUser?.id || 0),
-      id_endereco: 1,
-      id_entrega_opcao: Number(state.shippingOption?.codigoServico || 0) || undefined,
+      id_usuario: Number(state.currentUser?.id_usuario || 0),
+      id_entrega_opcao: undefined,
       status: 'pendente',
       forma_pagamento: paymentMap[selectedPayment] || 'cartao',
       subtotal: Number(subtotal.toFixed(2)),
@@ -1593,10 +1606,8 @@ function setupAuthUi() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-    } catch (_error) {
-      const localOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.orders) || '[]');
-      localOrders.push({ ...payload, id_local: Date.now(), criado_em: new Date().toISOString() });
-      localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(localOrders));
+    } catch (error) {
+      return showToast(normalizeUiErrorMessage(error, 'Não foi possível confirmar o pedido. Verifique os dados e tente novamente.'));
     }
     showToast('Pedido confirmado com sucesso.');
     state.cart = [];
@@ -1635,8 +1646,29 @@ function setupAuthUi() {
   setAuthMode('login');
 }
 
+
+async function validatePersistedSession() {
+  if (!state.authToken) {
+    state.currentUser = null;
+    localStorage.removeItem(STORAGE_KEYS.user);
+    return;
+  }
+  try {
+    const session = await apiRequest('/auth/me');
+    if (!session?.user) throw new Error('Sessão inválida.');
+    persistUserSession(session.user, state.authToken);
+  } catch (_error) {
+    state.currentUser = null;
+    state.authToken = '';
+    localStorage.removeItem(STORAGE_KEYS.user);
+    localStorage.removeItem(STORAGE_KEYS.token);
+    showToast('Sua sessão expirou. Faça login novamente.');
+  }
+}
+
 async function init() {
   loadSession();
+  await validatePersistedSession();
   await loadProducts();
   setupFilters();
   setupAuthUi();

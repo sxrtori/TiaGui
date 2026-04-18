@@ -8,8 +8,8 @@ export class Pedido {
   @Column()
   id_usuario: number;
 
-  @Column()
-  id_endereco: number;
+  @Column({ nullable: true })
+  id_endereco?: number;
 
   @Column({ nullable: true })
   id_pagamento?: number;
@@ -55,4 +55,13 @@ export class Pedido {
 
   @Column({ type: 'text', nullable: true })
   observacoes_entrega?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  endereco_entrega?: Record<string, unknown>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  itens?: Record<string, unknown>[];
+
+  @Column({ type: 'jsonb', nullable: true })
+  resumo_checkout?: Record<string, unknown>;
 }

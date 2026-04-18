@@ -39,6 +39,11 @@ export class AuthService {
     };
   }
 
+  async getSessionUser(userId: number) {
+    const user = await this.usuariosService.findOne(userId);
+    return { user };
+  }
+
   async register(payload: CreateUsuarioDto) {
     const user = await this.usuariosService.create(payload);
     return {

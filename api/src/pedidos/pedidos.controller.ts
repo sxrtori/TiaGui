@@ -27,8 +27,8 @@ export class PedidosController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.pedidosService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: TokenPayload) {
+    return this.pedidosService.findOneForUser(id, user);
   }
 
   @Post()

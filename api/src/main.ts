@@ -18,15 +18,25 @@ async function bootstrap() {
     }),
   );
 
-  const allowedOrigins = (
-    process.env.CORS_ORIGINS || 'http://localhost:5500,http://127.0.0.1:5500'
-  )
+  const configuredOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (configuredOrigins.includes(origin)) return callback(null, true);
+
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+      const isPrivateNetworkIp = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)(\d+\.\d+)(:\d+)?$/i.test(
+        origin,
+      );
+
+      if (isLocalhost || isPrivateNetworkIp) return callback(null, true);
+
+      return callback(new Error('Origem não permitida por CORS'), false);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   });

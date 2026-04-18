@@ -50,6 +50,9 @@ export class GiftCard {
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown>;
 
+  @Column({ type: 'text', array: true, default: '{}' })
+  webhookEventIds: string[];
+
   @CreateDateColumn({ type: 'timestamp' })
   dataCriacao: Date;
 

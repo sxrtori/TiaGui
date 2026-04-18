@@ -97,6 +97,7 @@ export class StripeService {
     }
 
     return JSON.parse(payload.toString('utf8')) as {
+      id: string;
       type: string;
       data: { object: Record<string, unknown> };
     };

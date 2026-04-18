@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS entrega_opcao (
 CREATE TABLE IF NOT EXISTS pedido (
     id_pedido SERIAL PRIMARY KEY,
     id_usuario INT NOT NULL REFERENCES usuario(id_usuario),
-    id_endereco INT NOT NULL REFERENCES endereco(id_endereco),
+    id_endereco INT REFERENCES endereco(id_endereco),
     id_pagamento INT REFERENCES pagamento(id_pagamento),
     id_entrega_opcao INT REFERENCES entrega_opcao(id_entrega_opcao),
     data_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -200,6 +200,9 @@ CREATE TABLE IF NOT EXISTS pedido (
     forma_pagamento VARCHAR(30) NOT NULL,
     codigo_rastreio VARCHAR(100),
     observacoes_entrega TEXT,
+    endereco_entrega JSONB,
+    itens JSONB,
+    resumo_checkout JSONB,
     CONSTRAINT status_check CHECK (status IN ('pendente', 'pago', 'em_preparo', 'enviado', 'entregue', 'cancelado')),
     CONSTRAINT forma_pagamento_check CHECK (forma_pagamento IN ('cartao', 'pix', 'boleto'))
 );
@@ -214,6 +217,26 @@ CREATE TABLE IF NOT EXISTS item_pedido (
     nome_produto VARCHAR(150) NOT NULL,
     nome_cor VARCHAR(50),
     tamanho VARCHAR(20)
+);
+
+
+CREATE TABLE IF NOT EXISTS gift_card (
+    id SERIAL PRIMARY KEY,
+    codigo VARCHAR(32) UNIQUE,
+    valor DECIMAL(10,2) NOT NULL CHECK (valor >= 30),
+    nome_destinatario VARCHAR(120) NOT NULL,
+    email_destinatario VARCHAR(180) NOT NULL,
+    mensagem TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    stripe_session_id VARCHAR(255),
+    stripe_payment_intent_id VARCHAR(255),
+    data_pagamento TIMESTAMP,
+    data_envio TIMESTAMP,
+    metadata JSONB,
+    webhook_event_ids TEXT[] NOT NULL DEFAULT '{}',
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT gift_card_status_check CHECK (status IN ('pendente', 'pago', 'enviado', 'usado', 'cancelado'))
 );
 
 -- =========================================
@@ -284,6 +307,8 @@ CREATE INDEX IF NOT EXISTS idx_pedido_data ON pedido(data_pedido);
 CREATE INDEX IF NOT EXISTS idx_item_pedido_pedido ON item_pedido(id_pedido);
 CREATE INDEX IF NOT EXISTS idx_item_pedido_produto ON item_pedido(id_produto);
 CREATE INDEX IF NOT EXISTS idx_item_pedido_variacao ON item_pedido(id_produto_variacao);
+CREATE INDEX IF NOT EXISTS idx_gift_card_status ON gift_card(status);
+CREATE INDEX IF NOT EXISTS idx_gift_card_email ON gift_card(email_destinatario);
 
 CREATE INDEX IF NOT EXISTS idx_favorito_usuario ON favorito(id_usuario);
 CREATE INDEX IF NOT EXISTS idx_favorito_produto ON favorito(id_produto);
