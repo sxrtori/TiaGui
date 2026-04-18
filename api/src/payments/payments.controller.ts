@@ -23,7 +23,7 @@ export class PaymentsController {
     const event = this.stripeService.verifyWebhookSignature(req.rawBody, signature);
 
     if (event.type === 'checkout.session.completed') {
-      await this.giftCardsService.processarPagamentoConfirmado(event.data.object);
+      await this.giftCardsService.processarPagamentoConfirmado(event.data.object, event.id);
     }
 
     return { received: true };

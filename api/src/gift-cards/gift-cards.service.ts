@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -13,6 +14,8 @@ import { EmailService } from '../communications/email.service';
 
 @Injectable()
 export class GiftCardsService {
+  private readonly logger = new Logger(GiftCardsService.name);
+
   constructor(
     @InjectRepository(GiftCard)
     private readonly giftCardRepository: Repository<GiftCard>,
@@ -44,6 +47,7 @@ export class GiftCardsService {
       metadata: {
         origem: 'web',
       },
+      webhookEventIds: [],
     });
 
     const persisted = await this.giftCardRepository.save(giftCard);
@@ -75,11 +79,12 @@ export class GiftCardsService {
           url: session.url,
         },
       };
-    } catch {
+    } catch (error) {
       await this.giftCardRepository.update(
         { id: persisted.id },
         { status: GiftCardStatus.CANCELADO },
       );
+      this.logger.error(`Falha ao iniciar checkout do gift card ${persisted.id}`, error as Error);
       throw new ServiceUnavailableException(
         'Não foi possível iniciar o pagamento do gift card no momento.',
       );
@@ -88,17 +93,38 @@ export class GiftCardsService {
 
   async processarPagamentoConfirmado(
     checkoutSession: Record<string, unknown>,
+    stripeEventId?: string,
   ): Promise<void> {
     const giftCardId = Number(
       (checkoutSession.metadata as Record<string, string> | undefined)?.giftCardId ||
         checkoutSession.client_reference_id,
     );
-    if (!giftCardId) return;
+    if (!giftCardId) {
+      this.logger.warn('Webhook recebido sem giftCardId.');
+      return;
+    }
 
     const giftCard = await this.giftCardRepository.findOne({
       where: { id: giftCardId },
     });
-    if (!giftCard || giftCard.status === GiftCardStatus.ENVIADO) return;
+    if (!giftCard) {
+      this.logger.warn(`Gift card ${giftCardId} não encontrado para webhook.`);
+      return;
+    }
+
+    const processedEvents = giftCard.webhookEventIds || [];
+    if (stripeEventId && processedEvents.includes(stripeEventId)) {
+      this.logger.warn(`Evento Stripe duplicado ignorado: ${stripeEventId}`);
+      return;
+    }
+
+    if (giftCard.status === GiftCardStatus.ENVIADO) {
+      if (stripeEventId) {
+        giftCard.webhookEventIds = [...processedEvents, stripeEventId];
+        await this.giftCardRepository.save(giftCard);
+      }
+      return;
+    }
 
     giftCard.status = GiftCardStatus.PAGO;
     giftCard.dataPagamento = new Date();
@@ -107,6 +133,8 @@ export class GiftCardsService {
       checkoutSession.payment_intent || giftCard.stripePaymentIntentId || '',
     );
     giftCard.codigo = giftCard.codigo || this.gerarCodigoUnico();
+    if (stripeEventId) giftCard.webhookEventIds = [...processedEvents, stripeEventId];
+
     await this.giftCardRepository.save(giftCard);
 
     await this.emailService.enviarGiftCardEmail({
