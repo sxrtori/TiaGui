@@ -53,8 +53,9 @@ export class ProdutosSeedService {
     let skipped = 0;
 
     for (const item of DEFAULT_PRODUCTS) {
+      const slug = this.slugify(item.nome);
       const existente = await this.produtoRepository.findOne({
-        where: { nome: item.nome },
+        where: [{ nome: item.nome }, { slug }],
       });
 
       if (existente) {
@@ -77,7 +78,7 @@ export class ProdutosSeedService {
           marca: item.marca,
           ativo: true,
           destaque: false,
-          slug: this.slugify(item.nome),
+          slug,
         }),
       );
 
