@@ -386,9 +386,7 @@ function normalizeProduct(p) {
     estoque: Number(p.estoque || 0),
     cashback: Number(p.cashback || 0),
     badgeLancamento: Boolean(p.badgeLancamento ?? p.lancamento),
-    promocaoAtiva: Boolean(
-      p.promocaoAtiva ?? p.promocao_ativa ?? p.promocao ?? Number(p.desconto || 0) > 0
-    ),
+    promocaoAtiva: Number(p.desconto || 0) > 0,
     modalidade: p.modalidade || 'Treino',
     vendedorId: Number(p.vendedorId || p.id_vendedor || 0),
     ativo: p.ativo !== false,
