@@ -27,7 +27,7 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       transformOptions: { enableImplicitConversion: true },
     }),
   );
@@ -36,5 +36,6 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0');
   console.log(`API SportX iniciada na porta ${port}`);
 }
+console.log('CWD =>', process.cwd());
 
 void bootstrap();

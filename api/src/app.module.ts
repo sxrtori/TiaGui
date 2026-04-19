@@ -18,35 +18,34 @@ import { PagamentosModule } from './pagamentos/pagamentos.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../.env/database.env'],
+      envFilePath: [process.cwd() + '/.env'],
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const host = configService.get<string>('DB_HOST');
-        const port = Number(configService.get<string>('DB_PORT', '5432'));
-        const username = configService.get<string>('DB_USERNAME');
-        const password = configService.get<string>('DB_PASSWORD');
-        const database = configService.get<string>('DB_DATABASE');
-        const sslEnabled =
-          configService.get<string>('DB_SSL', 'true').toLowerCase() !== 'false';
+        console.log('DB_HOST =>', configService.get<string>('DB_HOST'));
+        console.log('DB_PORT =>', configService.get<string>('DB_PORT'));
+        console.log('DB_USERNAME =>', configService.get<string>('DB_USERNAME'));
+        console.log('DB_DATABASE =>', configService.get<string>('DB_DATABASE'));
 
         return {
           type: 'postgres' as const,
-          host,
-          port,
-          username,
-          password,
-          database,
+          host: configService.get<string>('DB_HOST'),
+          port: Number(configService.get<string>('DB_PORT')),
+          username: configService.get<string>('DB_USERNAME'),
+          password: configService.get<string>('DB_PASSWORD'),
+          database: configService.get<string>('DB_DATABASE'),
           autoLoadEntities: true,
           synchronize: false,
-          ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+          ssl: {
+            rejectUnauthorized: false,
+          },
           extra: {
             max: Number(configService.get<string>('DB_POOL_MAX', '10')),
           },
         };
       },
-    }),
+}),
     ProdutosModule,
     UsuariosModule,
     PedidosModule,

@@ -10,15 +10,13 @@ DROP TABLE IF EXISTS produto_tamanho CASCADE;
 DROP TABLE IF EXISTS produto_cor CASCADE;
 DROP TABLE IF EXISTS favorito CASCADE;
 DROP TABLE IF EXISTS avaliacao CASCADE;
+DROP TABLE IF EXISTS avaliacao_vendedor CASCADE;
 DROP TABLE IF EXISTS gift_card CASCADE;
 DROP TABLE IF EXISTS produto CASCADE;
 DROP TABLE IF EXISTS categoria CASCADE;
 DROP TABLE IF EXISTS endereco CASCADE;
 DROP TABLE IF EXISTS usuario CASCADE;
 
--- =========================================
--- TABELAS BASE
--- =========================================
 CREATE TABLE IF NOT EXISTS usuario (
     id_usuario SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
@@ -34,6 +32,15 @@ CREATE TABLE IF NOT EXISTS usuario (
     motivo_bloqueio TEXT,
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT tipo_usuario_check CHECK (tipo_usuario IN ('cliente', 'admin', 'vendedor'))
+);
+
+CREATE TABLE IF NOT EXISTS avaliacao_vendedor (
+    id_avaliacao_vendedor SERIAL PRIMARY KEY,
+    id_usuario INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
+    id_vendedor INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
+    nota INT NOT NULL CHECK (nota BETWEEN 1 AND 5),
+    comentario TEXT,
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS endereco (
@@ -77,9 +84,6 @@ CREATE TABLE IF NOT EXISTS produto (
     )
 );
 
--- =========================================
--- CORES, TAMANHOS, IMAGENS E VARIAÇÕES
--- =========================================
 CREATE TABLE IF NOT EXISTS produto_cor (
     id_produto_cor SERIAL PRIMARY KEY,
     id_produto INT NOT NULL REFERENCES produto(id_produto) ON DELETE CASCADE,
@@ -128,9 +132,6 @@ CREATE TABLE IF NOT EXISTS produto_variacao (
     CONSTRAINT unique_produto_variacao UNIQUE (id_produto, id_produto_cor, id_produto_tamanho)
 );
 
--- =========================================
--- CARRINHO
--- =========================================
 CREATE TABLE IF NOT EXISTS carrinho (
     id_carrinho SERIAL PRIMARY KEY,
     id_usuario INT NOT NULL UNIQUE REFERENCES usuario(id_usuario) ON DELETE CASCADE,
@@ -150,9 +151,6 @@ CREATE TABLE IF NOT EXISTS item_carrinho (
     CONSTRAINT unique_item_carrinho UNIQUE (id_carrinho, id_produto, id_produto_variacao)
 );
 
--- =========================================
--- PAGAMENTO
--- =========================================
 CREATE TABLE IF NOT EXISTS pagamento (
     id_pagamento SERIAL PRIMARY KEY,
     id_usuario INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
@@ -167,9 +165,6 @@ CREATE TABLE IF NOT EXISTS pagamento (
     CONSTRAINT pagamento_status_check CHECK (status IN ('pendente', 'aprovado', 'recusado', 'estornado'))
 );
 
--- =========================================
--- FRETE / ENTREGA
--- =========================================
 CREATE TABLE IF NOT EXISTS entrega_opcao (
     id_entrega_opcao SERIAL PRIMARY KEY,
     nome VARCHAR(50) NOT NULL UNIQUE,
@@ -220,9 +215,6 @@ CREATE TABLE IF NOT EXISTS item_pedido (
     tamanho VARCHAR(20)
 );
 
--- =========================================
--- GIFT CARD
--- =========================================
 CREATE TABLE IF NOT EXISTS gift_card (
     id_gift_card SERIAL PRIMARY KEY,
     codigo VARCHAR(50) UNIQUE NOT NULL,
@@ -241,9 +233,6 @@ CREATE TABLE IF NOT EXISTS gift_card (
     )
 );
 
--- =========================================
--- FAVORITOS
--- =========================================
 CREATE TABLE IF NOT EXISTS favorito (
     id_favorito SERIAL PRIMARY KEY,
     id_usuario INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
@@ -251,9 +240,6 @@ CREATE TABLE IF NOT EXISTS favorito (
     CONSTRAINT unique_favorito UNIQUE (id_usuario, id_produto)
 );
 
--- =========================================
--- AVALIAÇÕES
--- =========================================
 CREATE TABLE IF NOT EXISTS avaliacao (
     id_avaliacao SERIAL PRIMARY KEY,
     id_usuario INT NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
@@ -268,9 +254,6 @@ CREATE TABLE IF NOT EXISTS avaliacao (
     CONSTRAINT comentario_minimo CHECK (char_length(comentario) >= 10 OR comentario IS NULL)
 );
 
--- =========================================
--- ÍNDICES
--- =========================================
 CREATE INDEX IF NOT EXISTS idx_endereco_usuario ON endereco(id_usuario);
 CREATE INDEX IF NOT EXISTS idx_produto_categoria ON produto(id_categoria);
 CREATE INDEX IF NOT EXISTS idx_produto_nome ON produto(nome);
@@ -313,9 +296,6 @@ CREATE INDEX IF NOT EXISTS idx_favorito_produto ON favorito(id_produto);
 CREATE INDEX IF NOT EXISTS idx_avaliacao_produto ON avaliacao(id_produto);
 CREATE INDEX IF NOT EXISTS idx_avaliacao_usuario ON avaliacao(id_usuario);
 
--- =========================================
--- FUNÇÕES / TRIGGERS
--- =========================================
 CREATE OR REPLACE FUNCTION atualizar_media_avaliacao_produto()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -371,44 +351,48 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_avaliacao_insert ON avaliacao;
 CREATE TRIGGER trg_avaliacao_insert
 AFTER INSERT ON avaliacao
 FOR EACH ROW
 EXECUTE FUNCTION atualizar_media_avaliacao_produto();
 
+DROP TRIGGER IF EXISTS trg_avaliacao_update ON avaliacao;
 CREATE TRIGGER trg_avaliacao_update
 AFTER UPDATE ON avaliacao
 FOR EACH ROW
 EXECUTE FUNCTION atualizar_media_avaliacao_produto();
 
+DROP TRIGGER IF EXISTS trg_avaliacao_delete ON avaliacao;
 CREATE TRIGGER trg_avaliacao_delete
 AFTER DELETE ON avaliacao
 FOR EACH ROW
 EXECUTE FUNCTION atualizar_media_avaliacao_produto();
 
+DROP TRIGGER IF EXISTS trg_update_data_avaliacao ON avaliacao;
 CREATE TRIGGER trg_update_data_avaliacao
 BEFORE UPDATE ON avaliacao
 FOR EACH ROW
 EXECUTE FUNCTION atualizar_data_avaliacao();
 
+DROP TRIGGER IF EXISTS trg_update_produto ON produto;
 CREATE TRIGGER trg_update_produto
 BEFORE UPDATE ON produto
 FOR EACH ROW
 EXECUTE FUNCTION update_produto_timestamp();
 
+DROP TRIGGER IF EXISTS trg_update_variacao ON produto_variacao;
 CREATE TRIGGER trg_update_variacao
 BEFORE UPDATE ON produto_variacao
 FOR EACH ROW
 EXECUTE FUNCTION update_variacao_timestamp();
 
+DROP TRIGGER IF EXISTS trg_update_carrinho ON carrinho;
 CREATE TRIGGER trg_update_carrinho
 BEFORE UPDATE ON carrinho
 FOR EACH ROW
 EXECUTE FUNCTION update_carrinho_timestamp();
 
--- =========================================
--- CATEGORIAS INICIAIS
--- =========================================
 INSERT INTO categoria (nome) VALUES
 ('Masculino'),
 ('Feminino'),
@@ -417,9 +401,6 @@ INSERT INTO categoria (nome) VALUES
 ('Esportes')
 ON CONFLICT (nome) DO NOTHING;
 
--- =========================================
--- MODALIDADES DE ENTREGA INICIAIS
--- =========================================
 INSERT INTO entrega_opcao (nome, descricao, prazo_min_dias, prazo_max_dias, valor_base, valor_por_kg, ativa, ordem) VALUES
 ('Sedex', 'Entrega rápida pelos Correios', 1, 3, 29.90, 4.50, TRUE, 1),
 ('PAC', 'Entrega econômica pelos Correios', 4, 8, 16.90, 2.50, TRUE, 2),

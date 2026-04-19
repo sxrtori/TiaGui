@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Categoria } from './entities/categoria.entity';
 import { Produto } from './entities/produto.entity';
+import { ProdutoImagem } from './entities/produto-imagem.entity';
 
 const DEFAULT_PRODUCTS = [
   {
@@ -12,6 +13,8 @@ const DEFAULT_PRODUCTS = [
     genero: 'Unissex',
     marca: 'SportX',
     categoriaNome: 'Calçados',
+    imagem:
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1200&q=80',
   },
   {
     nome: 'Camisa Dry Performance',
@@ -20,6 +23,8 @@ const DEFAULT_PRODUCTS = [
     genero: 'Masculino',
     marca: 'SportX',
     categoriaNome: 'Masculino',
+    imagem:
+      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1200&q=80',
   },
   {
     nome: 'Top Active Balance',
@@ -28,6 +33,8 @@ const DEFAULT_PRODUCTS = [
     genero: 'Feminino',
     marca: 'SportX',
     categoriaNome: 'Feminino',
+    imagem:
+      'https://images.unsplash.com/photo-1506629905607-d405b7a5a2a8?auto=format&fit=crop&w=1200&q=80',
   },
 ];
 
@@ -40,6 +47,8 @@ export class ProdutosSeedService {
     private readonly produtoRepository: Repository<Produto>,
     @InjectRepository(Categoria)
     private readonly categoriaRepository: Repository<Categoria>,
+    @InjectRepository(ProdutoImagem)
+    private readonly produtoImagemRepository: Repository<ProdutoImagem>,
   ) {}
 
   async seedDefaultProducts() {
@@ -54,35 +63,53 @@ export class ProdutosSeedService {
 
     for (const item of DEFAULT_PRODUCTS) {
       const slug = this.slugify(item.nome);
-      const existente = await this.produtoRepository.findOne({
+      let produto = await this.produtoRepository.findOne({
         where: [{ nome: item.nome }, { slug }],
       });
 
-      if (existente) {
-        skipped += 1;
-        continue;
-      }
-
       const categoria =
-        categorias.find((cat) =>
-          cat.nome?.toLowerCase() === item.categoriaNome.toLowerCase(),
+        categorias.find(
+          (cat) => cat.nome?.toLowerCase() === item.categoriaNome.toLowerCase(),
         ) || categorias[0];
 
-      await this.produtoRepository.save(
-        this.produtoRepository.create({
-          id_categoria: categoria.id_categoria,
-          nome: item.nome,
-          descricao: item.descricao,
-          preco: item.preco,
-          genero: item.genero,
-          marca: item.marca,
-          ativo: true,
-          destaque: false,
-          slug,
-        }),
-      );
+      if (!produto) {
+        produto = await this.produtoRepository.save(
+          this.produtoRepository.create({
+            id_categoria: categoria.id_categoria,
+            nome: item.nome,
+            descricao: item.descricao,
+            preco: item.preco,
+            genero: item.genero,
+            marca: item.marca,
+            ativo: true,
+            destaque: false,
+            slug,
+          }),
+        );
 
-      inserted += 1;
+        inserted += 1;
+      } else {
+        skipped += 1;
+      }
+
+      const imagemExistente = await this.produtoImagemRepository.findOne({
+        where: {
+          id_produto: produto.id_produto,
+          url_imagem: item.imagem,
+        },
+      });
+
+      if (!imagemExistente) {
+        await this.produtoImagemRepository.save(
+          this.produtoImagemRepository.create({
+            id_produto: produto.id_produto,
+            url_imagem: item.imagem,
+            alt_text: item.nome,
+            principal: true,
+            ordem: 0,
+          }),
+        );
+      }
     }
 
     this.logger.log(

@@ -17,6 +17,7 @@ class CreateImagemProdutoDto {
   url_imagem: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   id_produto_cor?: number;
 
@@ -29,16 +30,19 @@ class CreateImagemProdutoDto {
   principal?: boolean;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   ordem?: number;
 }
 
 class CreateVariacaoProdutoDto {
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   id_produto_cor?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   id_produto_tamanho?: number;
 
@@ -63,8 +67,14 @@ class CreateVariacaoProdutoDto {
 }
 
 export class CreateProdutoDto {
+  @IsOptional()
+  @Type(() => Number)
   @IsInt()
-  id_categoria: number;
+  id_categoria?: number;
+
+  @IsOptional()
+  @IsString()
+  categoria?: string;
 
   @IsString()
   @MaxLength(150)

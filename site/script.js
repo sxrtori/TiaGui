@@ -14,7 +14,7 @@ const resolveApiBaseUrl = () => {
   return `${protocol}//${hostname}:${backendPort}`;
 };
 
-const API_BASE_URL = 'http://192.168.1.12:3001';
+const API_BASE_URL = resolveApiBaseUrl();
 
 console.log('SCRIPT CERTO CARREGADO');
 console.log('API_BASE_URL:', API_BASE_URL);
@@ -72,6 +72,29 @@ const DEFAULT_KITS = [
     itens: ['Camisa', 'Short', 'Meião'],
   },
 ];
+const DEFAULT_KIT_PRODUCTS = DEFAULT_KITS.map((kit, index) => normalizeProduct({
+  id: 9000 + index,
+  nome: kit.nome,
+  descricao: kit.descricao,
+  preco: kit.preco,
+  imagem: kit.imagem,
+  categoria: 'Kits',
+  genero: 'Unissex',
+  tamanhos: 'Único',
+  modalidade: 'Kit esportivo',
+  estoque: 10,
+  marca: 'SportX',
+  cashback: 0,
+  desconto: 0,
+  badgeLancamento: false,
+  promocaoAtiva: false,
+  vendedorId: 1,
+  notaMedia: 5,
+  totalAvaliacoes: 0,
+  dataCriacao: new Date().toISOString(),
+  vendas: 0,
+  source: 'default-kit',
+}));
 
 const state = {
   cart: [],
@@ -144,23 +167,46 @@ function setPaymentFeedback(message, type = 'info') {
 function renderPixResult(pixCharge) {
   const pixResult = document.getElementById('pixResult');
   if (!pixResult) return;
-  if (!pixCharge?.pixCopiaCola || !pixCharge?.qrCodeUrl) {
+
+  const qrCodeUrl =
+    pixCharge?.qrCodeUrl
+    || pixCharge?.qr_code_url
+    || pixCharge?.qrCode
+    || pixCharge?.qrcode
+    || (pixCharge?.qrCodeBase64 ? `data:image/png;base64,${pixCharge.qrCodeBase64}` : '');
+
+  const pixCopiaCola =
+    pixCharge?.pixCopiaCola
+    || pixCharge?.pix_copia_cola
+    || pixCharge?.copiaCola
+    || pixCharge?.codigoPix
+    || pixCharge?.copyPaste
+    || '';
+
+  if (!pixCopiaCola && !qrCodeUrl) {
     pixResult.className = 'pix-result-empty';
     pixResult.textContent = 'Não foi possível gerar o Pix neste momento.';
     return;
   }
+
   pixResult.className = 'pix-result';
   pixResult.innerHTML = `
-    <div class="pix-qr-wrap">
-      <img src="${pixCharge.qrCodeUrl}" alt="QR Code Pix do pedido ${pixCharge.pedidoId || ''}" />
-    </div>
+    ${qrCodeUrl ? `
+      <div class="pix-qr-wrap">
+        <img src="${qrCodeUrl}" alt="QR Code Pix do pedido ${pixCharge?.pedidoId || ''}" />
+      </div>
+    ` : ''}
     <div class="pix-code-wrap">
       <label>Código Pix copia e cola</label>
-      <textarea id="pixCopyCode" readonly>${pixCharge.pixCopiaCola}</textarea>
+      <textarea id="pixCopyCode" readonly>${pixCopiaCola}</textarea>
       <button type="button" class="btn btn-light full-width top-gap-sm" id="copyPixCodeBtn">Copiar código Pix</button>
     </div>
-    <p class="pix-status">Status: <strong>${pixCharge.status || 'pendente'}</strong>${pixCharge.expiresAt ? ` • Expira em: ${new Date(pixCharge.expiresAt).toLocaleString('pt-BR')}` : ''}</p>
+    <p class="pix-status">
+      Status: <strong>${pixCharge?.status || 'pendente'}</strong>
+      ${pixCharge?.expiresAt ? ` • Expira em: ${new Date(pixCharge.expiresAt).toLocaleString('pt-BR')}` : ''}
+    </p>
   `;
+
   document.getElementById('copyPixCodeBtn')?.addEventListener('click', async () => {
     const code = document.getElementById('pixCopyCode')?.value || '';
     if (!code) return;
@@ -246,7 +292,11 @@ async function apiRequest(path, options = {}) {
 function normalizeProduct(p) {
   const rawSizes = Array.isArray(p.tamanhos)
     ? p.tamanhos
-    : String(p.tamanhos || p.numeracao || 'Único').split(',').map((size) => size.trim()).filter(Boolean);
+    : String(p.tamanhos || p.numeracao || 'Único')
+        .split(',')
+        .map((size) => size.trim())
+        .filter(Boolean);
+
   const parsedSizes = rawSizes.map((item) => {
     if (typeof item === 'object' && item !== null) {
       return {
@@ -254,18 +304,71 @@ function normalizeProduct(p) {
         disponivel: item.disponivel !== false && item.available !== false,
       };
     }
-    const [label, rawAvailability] = String(item).split(':').map((part) => part.trim());
+
+    const [label, rawAvailability] = String(item)
+      .split(':')
+      .map((part) => part.trim());
+
     return {
       label: label || String(item),
       disponivel: rawAvailability !== '0' && rawAvailability !== 'false',
     };
   });
-  const firstImage = p.imagem || 'https://via.placeholder.com/600x600?text=SportX';
-  const galeria = p.galeria_imagens ? String(p.galeria_imagens).split(',').map((i) => i.trim()).filter(Boolean) : [firstImage].filter(Boolean);
-  const cores = Array.isArray(p.cores) ? p.cores : [{ nome: p.cor || 'Padrão', hex: p.corHex || '#c7c7c7', imagens: [firstImage, ...galeria].slice(0, 5) }];
+
+  const apiImages = Array.isArray(p.imagens)
+    ? p.imagens
+        .sort((a, b) => Number(Boolean(b?.principal)) - Number(Boolean(a?.principal)))
+        .map((img) => {
+          if (!img) return null;
+
+          if (typeof img === 'string') {
+            return img.trim() || null;
+          }
+
+          const url = img.url_imagem || img.url || img.imagem || '';
+          return url && url !== 'undefined' && url !== 'null' ? url.trim() : null;
+        })
+        .filter(Boolean)
+    : [];
+
+  let firstImageRaw =
+    (typeof p.imagem === 'string' ? p.imagem.trim() : '') ||
+    (typeof p.url_imagem === 'string' ? p.url_imagem.trim() : '') ||
+    apiImages[0] ||
+    '';
+
+  if (!firstImageRaw || firstImageRaw === 'undefined' || firstImageRaw === 'null') {
+    firstImageRaw = '';
+  }
+
+  if (firstImageRaw && !firstImageRaw.startsWith('http')) {
+    firstImageRaw = `${API_BASE_URL}/${firstImageRaw.replace(/^\/+/, '')}`;
+  }
+
+  const firstImage = firstImageRaw || 'https://via.placeholder.com/600x600?text=SportX';
+
+  const galeriaBase = p.galeria_imagens
+    ? String(p.galeria_imagens)
+        .split(',')
+        .map((i) => i.trim())
+        .filter(Boolean)
+    : [];
+
+  const galeria = [...new Set([firstImage, ...apiImages, ...galeriaBase].filter(Boolean))];
+
+  const cores = Array.isArray(p.cores)
+    ? p.cores
+    : [
+        {
+          nome: p.cor || 'Padrão',
+          hex: p.corHex || '#c7c7c7',
+          imagens: galeria.slice(0, 5),
+        },
+      ];
 
   return {
-    id: Number(p.id ?? p.id_produto ?? Date.now()),
+    id: Number(p.id_produto ?? p.id ?? Date.now()),
+    id_produto: Number(p.id_produto ?? p.id ?? 0),
     nome: p.nome || 'Produto',
     descricao: p.descricao || '',
     preco: Number(p.preco || 0),
@@ -281,20 +384,24 @@ function normalizeProduct(p) {
     estoque: Number(p.estoque || 0),
     cashback: Number(p.cashback || 0),
     badgeLancamento: Boolean(p.badgeLancamento ?? p.lancamento),
-    promocaoAtiva: Boolean(p.promocaoAtiva ?? p.promocao_ativa ?? Number(p.desconto || 0) > 0),
+    promocaoAtiva: Boolean(
+      p.promocaoAtiva ?? p.promocao_ativa ?? Number(p.desconto || 0) > 0
+    ),
     modalidade: p.modalidade || 'Treino',
     vendedorId: Number(p.vendedorId || p.id_vendedor || 0),
     ativo: p.ativo !== false,
     dataCriacao: p.dataCriacao || p.created_at || new Date().toISOString(),
     notaMedia: Number(p.notaMedia || p.media_avaliacao || p.avaliacaoMedia || 0),
-    totalAvaliacoes: Number(p.totalAvaliacoes || p.total_avaliacoes || p.quantidadeAvaliacoes || 0),
+    totalAvaliacoes: Number(
+      p.totalAvaliacoes || p.total_avaliacoes || p.quantidadeAvaliacoes || 0
+    ),
     vendas: Number(p.vendas || 0),
     pesoKg: Number(p.pesoKg || p.peso_kg || 0.3),
     alturaCm: Number(p.alturaCm || p.altura_cm || 5),
     larguraCm: Number(p.larguraCm || p.largura_cm || 20),
     comprimentoCm: Number(p.comprimentoCm || p.comprimento_cm || 30),
     origemCep: formatCep(p.origemCep || p.origem_cep || '01001-000'),
-    source: p.source || 'catalog'
+    source: p.source || 'catalog',
   };
 }
 
@@ -499,26 +606,47 @@ async function fetchAddressByCep(cep) {
 }
 
 async function loadProducts() {
-  const local = JSON.parse(localStorage.getItem(STORAGE_KEYS.localProducts) || '[]').map(normalizeProduct);
+  const local = JSON.parse(localStorage.getItem(STORAGE_KEYS.localProducts) || '[]')
+    .map(normalizeProduct);
+
   let api = [];
+
   try {
     const data = await apiRequest('/produtos');
-    api = (Array.isArray(data) ? data : []).map((p) => normalizeProduct({ ...p, source: 'api' }));
+    api = (Array.isArray(data) ? data : []).map((p) =>
+      normalizeProduct({ ...p, source: 'api' })
+    );
   } catch (_e) {
     api = [];
   }
-  const merged = [...DEFAULT_PRODUCTS.map(normalizeProduct), ...api, ...local].reduce((m, p) => (m.set(p.id, p), m), new Map());
-  state.products = [...merged.values()].sort((a, b) => new Date(b.dataCriacao) - new Date(a.dataCriacao));
+
+  const base = api.length ? api : DEFAULT_PRODUCTS.map(normalizeProduct);
+  const merged = [...base, ...local].reduce((m, p) => {
+    m.set(Number(p.id), p);
+    return m;
+  }, new Map());
+
+  state.products = [...merged.values()].sort(
+    (a, b) => new Date(b.dataCriacao) - new Date(a.dataCriacao)
+  );
 }
 
-function getProductById(id) { return state.products.find((p) => Number(p.id) === Number(id)); }
+function getProductById(id) {
+  const allProducts = [...state.products, ...DEFAULT_KIT_PRODUCTS];
+  return allProducts.find((p) => Number(p.id_produto ?? p.id) === Number(id));
+}
 
 function renderProductCard(p) {
   const hasDiscount = Number(p.desconto) > 0;
   const wished = state.wishlist.includes(Number(p.id));
   return `<article class="product-card" data-product-link="${p.id}">
     <div class="product-media">
-      <img src="${p.imagem}" alt="${p.nome}" loading="lazy" />
+      <img 
+        src="${p.imagem}" 
+        alt="${p.nome}" 
+        loading="lazy"
+        onerror="this.onerror=null;this.src='https://via.placeholder.com/600x600?text=SportX';"
+      />
       <button class="wishlist-heart ${wished ? 'active' : ''}" data-action="wish" data-id="${p.id}" aria-label="Favoritar produto">❤</button>
       ${p.badgeLancamento ? '<span class="new-tag">Novo</span>' : ''}
       ${hasDiscount ? `<span class="discount-tag">-${p.desconto}%</span>` : ''}
@@ -569,6 +697,7 @@ function renderHome() {
 function renderKits() {
   const target = document.getElementById('kitsGrid');
   if (!target) return;
+
   const catalogKits = state.products
     .filter((product) => /kit/i.test(product.categoria) || /kit/i.test(product.nome))
     .slice(0, 4)
@@ -580,7 +709,18 @@ function renderKits() {
       preco: discountedPrice(product),
       itens: [product.modalidade || 'Treino', product.marca || 'SportX', product.genero || 'Unissex'],
     }));
-  const kits = catalogKits.length ? catalogKits : DEFAULT_KITS;
+
+  const kits = catalogKits.length
+    ? catalogKits
+    : DEFAULT_KIT_PRODUCTS.map((kit) => ({
+        id: kit.id,
+        nome: kit.nome,
+        descricao: kit.descricao,
+        imagem: kit.imagem,
+        preco: kit.preco,
+        itens: ['Kit esportivo', kit.marca || 'SportX', kit.genero || 'Unissex'],
+      }));
+
   target.innerHTML = kits.map((kit) => `
     <article class="kit-card">
       <img src="${kit.imagem}" alt="${kit.nome}" loading="lazy" />
@@ -596,7 +736,6 @@ function renderKits() {
     </article>
   `).join('');
 }
-
 function renderCategoryPage() {
   const category = getQuery('categoria') || '';
   document.getElementById('categoryPageTitle') && (document.getElementById('categoryPageTitle').textContent = category || 'Categoria');
@@ -962,7 +1101,13 @@ async function submitSellerProduct(event) {
     estoque: payload.estoque,
     imagem: payload.imagem,
     genero: payload.genero,
-    numeracao: payload.tamanhos.map((size) => size.disponivel ? size.label : `${size.label}:0`).join(','),
+    numeracao: Array.isArray(payload.tamanhos)
+    ? payload.tamanhos
+        .map((size) =>
+          size.disponivel ? size.label : `${size.label}:0`
+        )
+        .join(',')
+    : String(payload.tamanhos || ''),
     marca: payload.marca,
     desconto: payload.desconto,
     cashback: payload.cashback,
@@ -1495,9 +1640,9 @@ function handleGlobalClick(e) {
   const kit = e.target.closest('[data-kit-add]');
   if (kit) {
     const kitId = kit.dataset.kitAdd;
-    const productKit = state.products.find((product) => String(product.id) === String(kitId));
-    if (productKit) addToCart(productKit.id);
-    else showToast('Kit adicionado à lista de interesse.');
+    const productKit = getProductById(kitId);
+    if (productKit) addToCart(productKit.id, { feedbackEl: kit });
+    else showToast('Não foi possível adicionar este kit no momento.');
   }
 }
 
@@ -1833,7 +1978,7 @@ function setupAuthUi() {
         : undefined,
       endereco_entrega: address,
       itens: entries.map(({ product, qty, selectedSize, selectedColor }) => ({
-        id_produto: product.id,
+        id_produto: Number(product.id_produto ?? product.id),
         nome: product.nome,
         quantidade: qty,
         preco_unitario: Number(discountedPrice(product).toFixed(2)),
@@ -1857,7 +2002,8 @@ function setupAuthUi() {
 
     try {
       let pedidoId = Number(state.stripe.pedidoId || 0);
-      if (!isCardPayment || !pedidoId) {
+
+      if (!pedidoId) {
         const pedidoCriado = await apiRequest('/pedidos', {
           method: 'POST',
           body: JSON.stringify(payload),
@@ -1892,6 +2038,9 @@ function setupAuthUi() {
           method: 'POST',
           body: JSON.stringify({ pedidoId }),
         });
+
+  console.log('PIX RESPONSE:', pixCharge);
+
         renderPixResult(pixCharge);
         setPaymentFeedback('Pix gerado. Escaneie o QR Code ou copie o código.', 'success');
         showToast('Pix gerado com sucesso.');

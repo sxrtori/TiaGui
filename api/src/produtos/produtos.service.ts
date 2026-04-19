@@ -97,9 +97,34 @@ export class ProdutosService {
   async create(
     createProdutoDto: CreateProdutoDto,
   ): Promise<Record<string, unknown>> {
+
+    // ✅ MAPA
+    const mapaCategorias = {
+      masculino: 1,
+      feminino: 2,
+      calcados: 3,
+      acessorios: 4,
+      esportes: 5,
+    };
+
+    let id_categoria = createProdutoDto.id_categoria;
+
+    if (!id_categoria && (createProdutoDto as any).categoria) {
+      const categoriaNormalizada = (createProdutoDto as any).categoria
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+      id_categoria = mapaCategorias[categoriaNormalizada];
+    }
+
+    if (!id_categoria) {
+      throw new Error('Categoria inválida ou não enviada');
+    }
+
     const produto = await this.produtoRepository.save(
       this.produtoRepository.create({
-        id_categoria: createProdutoDto.id_categoria,
+        id_categoria: id_categoria, // 🔥 AQUI RESOLVE
         nome: createProdutoDto.nome,
         descricao: createProdutoDto.descricao,
         preco: createProdutoDto.preco,
@@ -111,7 +136,11 @@ export class ProdutosService {
       }),
     );
 
-    await this.syncProdutoRelations(produto.id_produto, createProdutoDto);
+    try {
+      await this.syncProdutoRelations(produto.id_produto, createProdutoDto);
+    } catch (error) {
+      console.error('ERRO NAS RELAÇÕES:', error);
+    }
     return this.findOne(produto.id_produto);
   }
 
