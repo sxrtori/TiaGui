@@ -693,14 +693,26 @@ function renderGrid(id, list) {
   el.innerHTML = list.length ? list.map(renderProductCard).join('') : '<div class="empty-state"><h3>Nenhum produto encontrado.</h3></div>';
 }
 
-function filterProducts({ search = '', category = '', gender = '', promoOnly = false }) {
+function filterProducts({ search = '', category = '', gender = '', promoOnly = false, includeKits = false }) {
   const s = search.trim().toLowerCase();
+
   return state.products.filter((p) => {
     if (!p.ativo) return false;
+
+    const isKit = /kit/i.test(p.categoria || '') || /kit/i.test(p.nome || '');
+    if (!includeKits && isKit) return false;
+
     if (promoOnly && !p.promocaoAtiva && Number(p.desconto || 0) <= 0) return false;
     if (category && p.categoria !== category && p.genero !== category) return false;
     if (gender && p.genero !== gender) return false;
-    if (s && !`${p.nome} ${p.marca} ${p.modalidade} ${p.categoria} ${p.genero}`.toLowerCase().includes(s)) return false;
+
+    if (
+      s &&
+      !`${p.nome} ${p.marca} ${p.modalidade} ${p.categoria} ${p.genero}`
+        .toLowerCase()
+        .includes(s)
+    ) return false;
+
     return true;
   });
 }
@@ -710,15 +722,32 @@ function renderHome() {
   const category = document.getElementById('categoryFilter')?.value || '';
   const gender = document.getElementById('genderFilter')?.value || '';
 
-  const activeProducts = state.products.filter((p) => p && p.ativo !== false);
+  const activeProducts = state.products.filter((p) => {
+    const isKit = /kit/i.test(p.categoria || '') || /kit/i.test(p.nome || '');
+    return p && p.ativo !== false && !isKit;
+  });
+
   const base = filterProducts({ search, category, gender });
 
-  console.log('Renderizando home com produtos:', activeProducts);
+  renderGrid(
+    'productsGrid',
+    base.filter((p) => p.destaque).length ? base.filter((p) => p.destaque) : base
+  );
 
-  renderGrid('productsGrid', base.filter((p) => p.destaque).length ? base.filter((p) => p.destaque) : base);
-  renderGrid('recentProductsGrid', [...activeProducts].slice(0, 6));
-  renderGrid('bestRatedGrid', [...activeProducts].sort((a, b) => Number(b.notaMedia || 0) - Number(a.notaMedia || 0)).slice(0, 6));
-  renderGrid('bestSellersGrid', [...activeProducts].sort((a, b) => Number(b.vendas || 0) - Number(a.vendas || 0)).slice(0, 6));
+  renderGrid(
+    'recentProductsGrid',
+    [...activeProducts].sort((a, b) => new Date(b.dataCriacao) - new Date(a.dataCriacao)).slice(0, 6)
+  );
+
+  renderGrid(
+    'bestRatedGrid',
+    [...activeProducts].sort((a, b) => Number(b.notaMedia || 0) - Number(a.notaMedia || 0)).slice(0, 6)
+  );
+
+  renderGrid(
+    'bestSellersGrid',
+    [...activeProducts].sort((a, b) => Number(b.vendas || 0) - Number(a.vendas || 0)).slice(0, 6)
+  );
 
   const promotions = activeProducts.filter((p) => p.promocaoAtiva).slice(0, 8);
   renderGrid('offersGrid', promotions);
