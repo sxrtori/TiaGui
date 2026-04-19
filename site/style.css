@@ -591,30 +591,22 @@ textarea {
 }
 
 .products-carousel {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 220px;
+  display: flex;
   gap: 18px;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
-  width: 100%;
-  padding: 4px 2px 12px;
-  scrollbar-width: none;
-  align-items: start;
+  padding: 10px 0;
 }
+
 
 .products-carousel::-webkit-scrollbar {
   display: none;
 }
 
 .products-carousel .product-card {
-  scroll-snap-align: start;
-  width: 220px;
-  min-width: 220px;
+  flex: 0 0 220px;
   max-width: 220px;
-  align-self: start;
 }
 
 .products-arrow {
