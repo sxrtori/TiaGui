@@ -653,15 +653,24 @@ function getProductById(id) {
 }
 
 function renderProductCard(p) {
+  if (!p) return '';
+
   const hasDiscount = Number(p.desconto || 0) > 0;
   const isPromo = Boolean(p.promocaoAtiva);
   const wished = state.wishlist.includes(Number(p.id));
+  const imagem = p.imagem || 'https://via.placeholder.com/600x600?text=SportX';
+  const nome = p.nome || 'Produto';
+  const marca = p.marca || 'SportX';
+  const modalidade = p.modalidade || 'Treino';
+  const preco = Number(p.preco || 0);
+  const nota = Number(p.notaMedia || 0);
+  const total = Number(p.totalAvaliacoes || 0);
 
   return `<article class="product-card" data-product-link="${p.id}">
     <div class="product-media">
       <img 
-        src="${p.imagem}" 
-        alt="${p.nome}" 
+        src="${imagem}" 
+        alt="${nome}" 
         loading="lazy"
         onerror="this.onerror=null;this.src='https://via.placeholder.com/600x600?text=SportX';"
       />
@@ -670,13 +679,13 @@ function renderProductCard(p) {
       ${isPromo ? '<span class="discount-tag">Promoção</span>' : ''}
     </div>
     <div class="product-body">
-      <small>${p.marca} • ${p.modalidade}</small>
-      <h3>${p.nome}</h3>
-      <div class="product-rating-row">⭐ ${Number(p.notaMedia || 0).toFixed(1)} <span>(${Number(p.totalAvaliacoes || 0)})</span></div>
+      <small>${marca} • ${modalidade}</small>
+      <h3>${nome}</h3>
+      <div class="product-rating-row">⭐ ${nota.toFixed(1)} <span>(${total})</span></div>
       <div class="product-meta">
         <div class="price-wrap">
-          <strong>${currency(discountedPrice(p))}</strong>
-          ${hasDiscount ? `<span class="old-price">${currency(p.preco)}</span>` : ''}
+          <strong>${currency(discountedPrice({ ...p, preco }))}</strong>
+          ${hasDiscount ? `<span class="old-price">${currency(preco)}</span>` : ''}
         </div>
       </div>
       <div class="product-actions">
@@ -689,8 +698,21 @@ function renderProductCard(p) {
 
 function renderGrid(id, list) {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = list.length ? list.map(renderProductCard).join('') : '<div class="empty-state"><h3>Nenhum produto encontrado.</h3></div>';
+  if (!el) {
+    console.warn(`Grid não encontrado: ${id}`);
+    return;
+  }
+
+  const validList = Array.isArray(list) ? list.filter(Boolean) : [];
+
+  try {
+    el.innerHTML = validList.length
+      ? validList.map(renderProductCard).join('')
+      : '<div class="empty-state"><h3>Nenhum produto encontrado.</h3></div>';
+  } catch (error) {
+    console.error(`Erro ao renderizar grid ${id}:`, error, validList);
+    el.innerHTML = '<div class="empty-state"><h3>Erro ao carregar produtos.</h3></div>';
+  }
 }
 
 function filterProducts({ search = '', category = '', gender = '', promoOnly = false, includeKits = false }) {
@@ -728,22 +750,22 @@ function renderHome() {
   });
 
   const base = filterProducts({ search, category, gender });
+  const destaqueList = base.filter((p) => p.destaque);
 
-  renderGrid(
-    'productsGrid',
-    base.filter((p) => p.destaque).length ? base.filter((p) => p.destaque) : base
-  );
+  console.log('state.products:', state.products);
+  console.log('activeProducts:', activeProducts);
+  console.log('base:', base);
+  console.log('destaqueList:', destaqueList);
 
+  renderGrid('productsGrid', destaqueList.length ? destaqueList : base);
   renderGrid(
     'recentProductsGrid',
     [...activeProducts].sort((a, b) => new Date(b.dataCriacao) - new Date(a.dataCriacao)).slice(0, 6)
   );
-
   renderGrid(
     'bestRatedGrid',
     [...activeProducts].sort((a, b) => Number(b.notaMedia || 0) - Number(a.notaMedia || 0)).slice(0, 6)
   );
-
   renderGrid(
     'bestSellersGrid',
     [...activeProducts].sort((a, b) => Number(b.vendas || 0) - Number(a.vendas || 0)).slice(0, 6)
