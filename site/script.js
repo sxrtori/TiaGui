@@ -387,7 +387,7 @@ function normalizeProduct(p) {
     cashback: Number(p.cashback || 0),
     badgeLancamento: Boolean(p.badgeLancamento ?? p.lancamento),
     promocaoAtiva: Boolean(
-      p.promocaoAtiva ?? p.promocao_ativa ?? Number(p.desconto || 0) > 0
+      p.promocaoAtiva ?? p.promocao_ativa ?? p.promocao ?? Number(p.desconto || 0) > 0
     ),
     modalidade: p.modalidade || 'Treino',
     vendedorId: Number(p.vendedorId || p.id_vendedor || 0),
@@ -614,23 +614,37 @@ async function loadProducts() {
   let api = [];
 
   try {
-    const data = await apiRequest('/produtos');
-    api = (Array.isArray(data) ? data : []).map((p) =>
-      normalizeProduct({ ...p, source: 'api' })
-    );
-  } catch (_e) {
+    const response = await apiRequest('/produtos');
+
+    const apiList = Array.isArray(response)
+      ? response
+      : Array.isArray(response?.produtos)
+        ? response.produtos
+        : Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.items)
+            ? response.items
+            : [];
+
+    api = apiList.map((p) => normalizeProduct({ ...p, source: 'api' }));
+    console.log('Produtos vindos da API:', api);
+  } catch (error) {
+    console.error('Erro ao carregar produtos da API:', error);
     api = [];
   }
 
   const base = api.length ? api : DEFAULT_PRODUCTS.map(normalizeProduct);
+
   const merged = [...base, ...local].reduce((m, p) => {
     m.set(Number(p.id), p);
     return m;
   }, new Map());
 
-  state.products = [...merged.values()].sort(
-    (a, b) => new Date(b.dataCriacao) - new Date(a.dataCriacao)
-  );
+  state.products = [...merged.values()]
+    .filter((p) => p && p.ativo !== false)
+    .sort((a, b) => new Date(b.dataCriacao) - new Date(a.dataCriacao));
+
+  console.log('state.products final:', state.products);
 }
 
 function getProductById(id) {
@@ -639,8 +653,10 @@ function getProductById(id) {
 }
 
 function renderProductCard(p) {
-  const hasDiscount = Number(p.desconto) > 0;
+  const hasDiscount = Number(p.desconto || 0) > 0;
+  const isPromo = Boolean(p.promocaoAtiva);
   const wished = state.wishlist.includes(Number(p.id));
+
   return `<article class="product-card" data-product-link="${p.id}">
     <div class="product-media">
       <img 
@@ -651,15 +667,24 @@ function renderProductCard(p) {
       />
       <button class="wishlist-heart ${wished ? 'active' : ''}" data-action="wish" data-id="${p.id}" aria-label="Favoritar produto">❤</button>
       ${p.badgeLancamento ? '<span class="new-tag">Novo</span>' : ''}
-      ${hasDiscount ? `<span class="discount-tag">-${p.desconto}%</span>` : ''}
+      ${isPromo ? '<span class="discount-tag">Promoção</span>' : ''}
     </div>
     <div class="product-body">
       <small>${p.marca} • ${p.modalidade}</small>
       <h3>${p.nome}</h3>
-      <div class="product-rating-row">⭐ ${p.notaMedia.toFixed(1)} <span>(${p.totalAvaliacoes})</span></div>
-      <div class="product-meta"><div class="price-wrap"><strong>${currency(discountedPrice(p))}</strong>${hasDiscount ? `<span class="old-price">${currency(p.preco)}</span>` : ''}</div></div>
-      <div class="product-actions"><button class="btn-card btn-dark" data-action="cart" data-id="${p.id}">Adicionar</button><a class="btn-card btn-light" href="produto.html?id=${p.id}">Ver detalhes</a></div>
-    </div></article>`;
+      <div class="product-rating-row">⭐ ${Number(p.notaMedia || 0).toFixed(1)} <span>(${Number(p.totalAvaliacoes || 0)})</span></div>
+      <div class="product-meta">
+        <div class="price-wrap">
+          <strong>${currency(discountedPrice(p))}</strong>
+          ${hasDiscount ? `<span class="old-price">${currency(p.preco)}</span>` : ''}
+        </div>
+      </div>
+      <div class="product-actions">
+        <button class="btn-card btn-dark" data-action="cart" data-id="${p.id}">Adicionar</button>
+        <a class="btn-card btn-light" href="produto.html?id=${p.id}">Ver detalhes</a>
+      </div>
+    </div>
+  </article>`;
 }
 
 function renderGrid(id, list) {
@@ -684,15 +709,24 @@ function renderHome() {
   const search = document.getElementById('searchInput')?.value || '';
   const category = document.getElementById('categoryFilter')?.value || '';
   const gender = document.getElementById('genderFilter')?.value || '';
+
+  const activeProducts = state.products.filter((p) => p && p.ativo !== false);
   const base = filterProducts({ search, category, gender });
-  renderGrid('productsGrid', base);
-  renderGrid('recentProductsGrid', [...state.products].slice(0, 6));
-  renderGrid('bestRatedGrid', [...state.products].sort((a, b) => b.notaMedia - a.notaMedia).slice(0, 6));
-  renderGrid('bestSellersGrid', [...state.products].sort((a, b) => b.vendas - a.vendas).slice(0, 6));
-  const promotions = filterProducts({ promoOnly: true }).slice(0, 8);
+
+  console.log('Renderizando home com produtos:', activeProducts);
+
+  renderGrid('productsGrid', base.filter((p) => p.destaque).length ? base.filter((p) => p.destaque) : base);
+  renderGrid('recentProductsGrid', [...activeProducts].slice(0, 6));
+  renderGrid('bestRatedGrid', [...activeProducts].sort((a, b) => Number(b.notaMedia || 0) - Number(a.notaMedia || 0)).slice(0, 6));
+  renderGrid('bestSellersGrid', [...activeProducts].sort((a, b) => Number(b.vendas || 0) - Number(a.vendas || 0)).slice(0, 6));
+
+  const promotions = activeProducts.filter((p) => p.promocaoAtiva).slice(0, 8);
   renderGrid('offersGrid', promotions);
   renderGrid('monthlyPromotionsGrid', promotions);
-  renderGrid('launchCarousel', state.products.filter((p) => p.badgeLancamento).slice(0, 8));
+
+  const launches = activeProducts.filter((p) => p.badgeLancamento).slice(0, 8);
+  renderGrid('launchCarousel', launches);
+
   renderKits();
 }
 
