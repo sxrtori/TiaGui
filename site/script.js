@@ -4,14 +4,16 @@ const resolveApiBaseUrl = () => {
     || document.querySelector('meta[name="sportx-api-url"]')?.content
     || document.querySelector('meta[name="api-base-url"]')?.content
     || localStorage.getItem('sportx-api-base-url');
+
   if (explicit) return explicit.replace(/\/$/, '');
-  const { protocol, hostname } = window.location;
-  const frontendPort = window.location.port;
-  const commonFrontendPorts = new Set(['', '80', '443', '5500', '5173', '4173', '8080', '4200']);
-  const backendPort = '3001';
-  if (commonFrontendPorts.has(frontendPort)) return `${protocol}//${hostname}:${backendPort}`;
-  if (frontendPort === backendPort) return `${protocol}//${hostname}:3000`;
-  return `${protocol}//${hostname}:${backendPort}`;
+
+  const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+  if (isLocalhost) {
+    return 'http://localhost:3001';
+  }
+
+  return 'https://sportx-api.onrender.com';
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
