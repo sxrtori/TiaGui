@@ -656,7 +656,7 @@ function renderProductCard(p) {
   if (!p) return '';
 
   const hasDiscount = Number(p.desconto || 0) > 0;
-  const isPromo = Boolean(p.promocaoAtiva);
+  const isPromo = Boolean(p.promocaoAtiva) && hasDiscount;
   const wished = state.wishlist.includes(Number(p.id));
   const imagem = p.imagem || 'https://via.placeholder.com/600x600?text=SportX';
   const nome = p.nome || 'Produto';
@@ -665,6 +665,7 @@ function renderProductCard(p) {
   const preco = Number(p.preco || 0);
   const nota = Number(p.notaMedia || 0);
   const total = Number(p.totalAvaliacoes || 0);
+  const precoFinal = hasDiscount ? discountedPrice(p) : preco;
 
   return `<article class="product-card" data-product-link="${p.id}">
     <div class="product-media">
@@ -676,7 +677,7 @@ function renderProductCard(p) {
       />
       <button class="wishlist-heart ${wished ? 'active' : ''}" data-action="wish" data-id="${p.id}" aria-label="Favoritar produto">❤</button>
       ${p.badgeLancamento ? '<span class="new-tag">Novo</span>' : ''}
-      ${isPromo ? '<span class="discount-tag">Promoção</span>' : ''}
+      ${isPromo ? `<span class="discount-tag">-${Number(p.desconto)}%</span>` : ''}
     </div>
     <div class="product-body">
       <small>${marca} • ${modalidade}</small>
@@ -684,7 +685,7 @@ function renderProductCard(p) {
       <div class="product-rating-row">⭐ ${nota.toFixed(1)} <span>(${total})</span></div>
       <div class="product-meta">
         <div class="price-wrap">
-          <strong>${currency(discountedPrice({ ...p, preco }))}</strong>
+          <strong>${currency(precoFinal)}</strong>
           ${hasDiscount ? `<span class="old-price">${currency(preco)}</span>` : ''}
         </div>
       </div>
@@ -724,7 +725,7 @@ function filterProducts({ search = '', category = '', gender = '', promoOnly = f
     const isKit = /kit/i.test(p.categoria || '') || /kit/i.test(p.nome || '');
     if (!includeKits && isKit) return false;
 
-    if (promoOnly && !p.promocaoAtiva && Number(p.desconto || 0) <= 0) return false;
+    if (promoOnly && Number(p.desconto || 0) <= 0) return false;
     if (category && p.categoria !== category && p.genero !== category) return false;
     if (gender && p.genero !== gender) return false;
 
@@ -771,7 +772,10 @@ function renderHome() {
     [...activeProducts].sort((a, b) => Number(b.vendas || 0) - Number(a.vendas || 0)).slice(0, 6)
   );
 
-  const promotions = activeProducts.filter((p) => p.promocaoAtiva).slice(0, 8);
+  const promotions = activeProducts
+  .filter((p) => Number(p.desconto || 0) > 0)
+  .slice(0, 8);
+
   renderGrid('offersGrid', promotions);
   renderGrid('monthlyPromotionsGrid', promotions);
 
@@ -1062,10 +1066,9 @@ async function renderProductPage() {
 }
 
 function renderPromotionsPage() {
-  const list = filterProducts({ promoOnly: true });
+  const list = state.products.filter((p) => Number(p.desconto || 0) > 0);
   renderGrid('promotionsGrid', list);
 }
-
 function getSellerProducts() {
   if (!state.currentUser) return [];
   return state.products.filter((p) => Number(p.vendedorId || 0) === Number(state.currentUser.id_usuario) || p.source.startsWith('seller'));
