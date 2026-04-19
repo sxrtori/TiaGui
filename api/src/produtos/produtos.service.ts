@@ -329,8 +329,8 @@ export class ProdutosService {
         '',
       imagens,
       estoque: estoqueTotal,
-      promocao_ativa: Boolean(produto.promocao_ativa ?? produto.destaque),
       desconto: Number(produto.desconto || 0),
+      promocao_ativa: Boolean(produto.promocao_ativa),
       
       cores: (produto.cores || []).map((cor) => ({
         id_produto_cor: cor.id_produto_cor,

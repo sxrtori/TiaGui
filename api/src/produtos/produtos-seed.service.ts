@@ -74,18 +74,20 @@ export class ProdutosSeedService {
 
       if (!produto) {
         produto = await this.produtoRepository.save(
-          this.produtoRepository.create({
-            id_categoria: categoria.id_categoria,
-            nome: item.nome,
-            descricao: item.descricao,
-            preco: item.preco,
-            genero: item.genero,
-            marca: item.marca,
-            ativo: true,
-            destaque: false,
-            slug,
-          }),
-        );
+        this.produtoRepository.create({
+          id_categoria: categoria.id_categoria,
+          nome: item.nome,
+          descricao: item.descricao,
+          preco: item.preco,
+          genero: item.genero,
+          marca: item.marca,
+          ativo: true,
+          destaque: false,
+          desconto: 0,
+          promocao_ativa: false,
+          slug,
+        }),
+      );
 
         inserted += 1;
       } else {

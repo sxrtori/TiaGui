@@ -24,6 +24,10 @@ export class InMemoryDataService {
     slug: 'nike-tenis-velocity-pro',
     media_avaliacao: 4.9,
     total_avaliacoes: 12,
+
+    desconto: 10,               // 👈 ADICIONA
+    promocao_ativa: true,      // 👈 ADICIONA
+
     created_at: new Date('2026-03-29T10:00:00.000Z'),
     updated_at: new Date('2026-03-29T10:00:00.000Z'),
     imagens: [],
@@ -44,6 +48,10 @@ export class InMemoryDataService {
     slug: 'adidas-legging-motion-fit',
     media_avaliacao: 4.8,
     total_avaliacoes: 18,
+
+    desconto: 0,               // 👈 ADICIONA
+    promocao_ativa: false,    // 👈 ADICIONA
+
     created_at: new Date('2026-03-25T10:00:00.000Z'),
     updated_at: new Date('2026-03-25T10:00:00.000Z'),
     imagens: [],
