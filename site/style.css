@@ -644,7 +644,6 @@ textarea {
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 100%;
 }
 
 .product-card:hover {
@@ -797,8 +796,6 @@ body[data-page="category"] .product-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
-  min-height: 145px;
 }
 
 .product-category {
@@ -2610,11 +2607,12 @@ textarea:focus {
     align-items: flex-start;
   }
   .products-carousel {
-  align-items: stretch;
+    align-items: start;
+  }
   }
 
   .products-carousel .product-card {
-    align-self: stretch;
+    align-self: start;
   }
 
   #productsGrid .product-card,
