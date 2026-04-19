@@ -124,7 +124,7 @@ export class ProdutosService {
 
     const produto = await this.produtoRepository.save(
       this.produtoRepository.create({
-        id_categoria: id_categoria, // 🔥 AQUI RESOLVE
+        id_categoria: id_categoria,
         nome: createProdutoDto.nome,
         descricao: createProdutoDto.descricao,
         preco: createProdutoDto.preco,
@@ -133,6 +133,8 @@ export class ProdutosService {
         slug: createProdutoDto.slug || this.slugify(createProdutoDto.nome),
         ativo: createProdutoDto.ativo ?? true,
         destaque: createProdutoDto.destaque ?? false,
+        desconto: Number((createProdutoDto as any).desconto ?? 0),
+        promocao_ativa: Boolean((createProdutoDto as any).promocao_ativa ?? false),
       }),
     );
 
@@ -173,8 +175,11 @@ export class ProdutosService {
     promocao_ativa: boolean,
     desconto?: number,
   ) {
-    void desconto;
-    return this.update(id, { destaque: promocao_ativa });
+    return this.update(id, {
+      destaque: promocao_ativa,
+      promocao_ativa,
+      desconto: Number(desconto ?? 0),
+    } as any);
   }
 
   async updateStock(id: number, estoque: number) {
@@ -324,19 +329,9 @@ export class ProdutosService {
         '',
       imagens,
       estoque: estoqueTotal,
-      promocao_ativa: produto.destaque,
-      desconto:
-        produto.destaque && primeiroPrecoVariacao
-          ? Math.max(
-              0,
-              Number(
-                (
-                  ((preco - Number(primeiroPrecoVariacao)) / preco) *
-                  100
-                ).toFixed(2),
-              ),
-            )
-          : 0,
+      promocao_ativa: Boolean(produto.promocao_ativa ?? produto.destaque),
+      desconto: Number(produto.desconto || 0),
+      
       cores: (produto.cores || []).map((cor) => ({
         id_produto_cor: cor.id_produto_cor,
         nome_cor: cor.nome_cor,

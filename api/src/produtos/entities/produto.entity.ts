@@ -85,4 +85,10 @@ export class Produto {
 
   @OneToMany(() => ProdutoTamanho, (tamanho) => tamanho.produto)
   tamanhos: ProdutoTamanho[];
+
+  @Column({ name: 'desconto', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  desconto: number;
+
+  @Column({ name: 'promocao_ativa', type: 'boolean', default: false })
+  promocao_ativa: boolean;
 }

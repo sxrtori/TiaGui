@@ -613,6 +613,7 @@ async function loadProducts() {
 
   try {
     const response = await apiRequest('/produtos');
+    console.log('RESPONSE BRUTA /produtos:', response);
 
     const apiList = Array.isArray(response)
       ? response
@@ -623,6 +624,15 @@ async function loadProducts() {
           : Array.isArray(response?.items)
             ? response.items
             : [];
+
+console.log('APILIST /produtos:', apiList);
+console.log('DESCONTOS DA API:', apiList.map(p => ({
+  id: p.id_produto || p.id,
+  nome: p.nome,
+  preco: p.preco,
+  desconto: p.desconto,
+  promocao_ativa: p.promocao_ativa
+})));
 
     api = apiList.map((p) => normalizeProduct({ ...p, source: 'api' }));
     console.log('Produtos vindos da API:', api);
