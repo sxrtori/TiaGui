@@ -57,8 +57,10 @@ export class ProdutosService {
     const produtos = await qb.getMany();
     return produtos
       .filter((produto) =>
-        filters?.promocao === 'true' ? Boolean(produto.destaque) : true,
-      )
+      filters?.promocao === 'true'
+        ? Boolean(produto.promocao_ativa)
+        : true,
+    )
       .map((produto) => this.toFrontProduct(produto));
   }
 
