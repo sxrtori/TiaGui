@@ -592,7 +592,7 @@ textarea {
 .products-carousel {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 250px;
+  grid-auto-columns: 165px;
   gap: 16px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -609,10 +609,9 @@ textarea {
 
 .products-carousel .product-card {
   scroll-snap-align: start;
-  flex: 0 0 250px;
-  width: 250px;
-  min-width: 250px;
-  max-width: 250px;
+  width: 165px;
+  min-width: 165px;
+  max-width: 165px;
 }
 
 .products-arrow {
@@ -672,8 +671,8 @@ body[data-page="category"] .product-body {
 
 .product-media {
   position: relative;
-  height: 270px;
-  min-height: 270px;
+  height: 180px;
+  min-height: 180px;
   overflow: hidden;
   background: #f4f4f4;
 }
@@ -794,12 +793,12 @@ body[data-page="category"] .product-body {
 }
 
 .product-body {
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex: 1;
-  min-height: 190px;
+  min-height: 145px;
 }
 
 .product-category {
@@ -883,11 +882,11 @@ body[data-page="category"] .product-body {
 
 .btn-card {
   flex: 1;
-  padding: 10px 10px;
+  padding: 8px 8px;
   border-radius: 10px;
   font-weight: 800;
   text-align: center;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   transition: transform 0.2s ease, opacity 0.2s ease, background 0.2s ease;
 }
 
