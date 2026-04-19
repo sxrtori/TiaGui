@@ -635,7 +635,7 @@ async function loadProducts() {
 
   const base = api.length ? api : DEFAULT_PRODUCTS.map(normalizeProduct);
 
-  const merged = [...base, ...local].reduce((m, p) => {
+  const merged = [...local, ...base].reduce((m, p) => {
     m.set(Number(p.id), p);
     return m;
   }, new Map());
